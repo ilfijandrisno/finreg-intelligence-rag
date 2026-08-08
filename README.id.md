@@ -50,9 +50,11 @@ Platform ini mengikuti arsitektur Berlapis yang Modular:
                                   ▼
 +-------------------------------------------------------------------+
 |                     Ingesti & Pemrosesan                          |
+|  - Adapter Sumber (BankIndonesiaAdapter & OjkAdapter)             |
 |  - Pelacakan checksum & metadata sumber                           |
-|  - Analisis struktur seksi (Bab / Pasal / Ayat)                   |
-|  - Pemotongan chunk token berdasarkan posisi                      |
+|  - Downloader Andal (httpx + backoff + rate-limiting)             |
+|  - Penyimpanan Berkas Mentah Deterministik (data/raw/...)         |
+|  - Registri Ingesti PostgreSQL (regulations, documents, ver)      |
 +-------------------------------------------------------------------+
                                   │
                                   ▼
@@ -79,22 +81,23 @@ Platform ini mengikuti arsitektur Berlapis yang Modular:
 
 ---
 
-## 5. Rencana Kapabilitas RAG
+## 5. Kapabilitas RAG & Ingesti Data
 
-- **Pencarian Hibrida Padat-Sparse**: Menggabungkan kemiripan vektor semantik dengan pencarian kata kunci BM25 untuk pencocokan istilah hukum yang presisi.
-- **Ekstraksi Sitasi Regulasi**: Menghasilkan jawaban yang dilengkapi dengan sitasi hukum terstruktur.
-- **Pencarian Silsilah Lintas Regulasi**: Melacak apakah suatu pasal yang dikutip telah diubah atau dicabut oleh regulasi yang lebih baru.
-- **Evaluasi Triad RAG**: Mengevaluasi kesetiaan (*faithfulness*), presisi konteks, dan relevansi jawaban melalui metrik evaluasi otomatis.
+- **Alur Ingesti Resmi (Terimplementasi Fase 2)**: Adapter sumber resmi untuk **Bank Indonesia (PBI)** dan **Otoritas Jasa Keuangan (POJK)**. Mendukung penemuan paginasi, ekstraksi metadata, resolusi lampiran, pengunduhan yang andal dengan batas laju (*rate limiting*) dan *exponential backoff*, *checksum* SHA-256, penyimpanan lokal deterministik, persistensi basis data PostgreSQL, serta jaminan idempotensi via indeks unik parsial (`uq_document_versions_current`).
+- **Pencarian Hibrida Padat-Sparse (Direncanakan)**: Menggabungkan kemiripan vektor semantik dengan pencarian kata kunci BM25 untuk pencocokan istilah hukum yang presisi.
+- **Ekstraksi Sitasi Regulasi (Direncanakan)**: Menghasilkan jawaban yang dilengkapi dengan sitasi hukum terstruktur.
+- **Pencarian Silsilah Lintas Regulasi (Direncanakan)**: Melacak apakah suatu pasal yang dikutip telah diubah atau dicabut oleh regulasi yang lebih baru.
+- **Evaluasi Triad RAG (Direncanakan)**: Mengevaluasi kesetiaan (*faithfulness*), presisi konteks, dan relevansi jawaban melalui metrik evaluasi otomatis.
 
 ---
 
-## 6. Rencana Sumber Data
+## 6. Sumber Data Resmi
 
-Platform ini hanya meng-ingest sumber regulasi publik resmi:
-- **Bank Indonesia (BI)**: Peraturan Bank Indonesia (PBI), Surat Edaran (SE BI), Padoman Operasional.
-- **Otoritas Jasa Keuangan (OJK)**: Peraturan OJK (POJK), Surat Edaran OJK (SEOJK), Peraturan Dewan Komisioner.
+Alur ingesti terhubung langsung ke portal publik regulasi resmi:
+- **Bank Indonesia (BI)**: Peraturan Bank Indonesia (PBI) — [https://www.bi.go.id](https://www.bi.go.id)
+- **Otoritas Jasa Keuangan (OJK)**: Peraturan OJK (POJK) — [https://www.ojk.go.id](https://www.ojk.go.id)
 
-> *Catatan: Berkas PDF biner diunduh secara dinamis dan tidak pernah dimasukkan ke dalam kontrol versi (Git).*
+*(Catatan: Tipe regulasi PADG, SEOJK, dan PADK akan diperkenalkan pada fase mendatang. Berkas PDF biner diunduh secara dinamis dan tidak pernah dimasukkan ke dalam kontrol versi (Git).)*
 
 ---
 
@@ -102,6 +105,7 @@ Platform ini hanya meng-ingest sumber regulasi publik resmi:
 
 - **Bahasa Utama**: Python 3.11+
 - **Kerangka Kerja API**: FastAPI, Uvicorn
+- **Klien HTTP & Pemroses HTML**: HTTPX, BeautifulSoup4
 - **Konfigurasi & Validasi**: Pydantic v2, Pydantic Settings
 - **Basis Data Relasional Utama**: PostgreSQL 16
 - **Penyimpanan Vektor**: pgvector
@@ -119,7 +123,7 @@ finreg-intelligence-rag/
 ├── README.md                  # Dokumentasi proyek (Bahasa Inggris)
 ├── README.id.md               # Dokumentasi proyek (Bahasa Indonesia)
 ├── LICENSE                    # Lisensi MIT
-├── .gitignore                 # Aturan abaikan Git
+├── .gitignore                 # Aturan abaikan Git (mengabaikan data/raw dan data/metadata)
 ├── .env.example               # Templat variabel lingkungan
 ├── pyproject.toml             # Konfigurasi build dan dependensi Python
 ├── docker-compose.yml         # Penyiapan PostgreSQL 16 + pgvector lokal
@@ -129,9 +133,14 @@ finreg-intelligence-rag/
 │   └── finreg/
 │       ├── __init__.py        # Inisialisasi versi paket
 │       ├── config/            # Pengaturan aplikasi Pydantic bertipe
-│       ├── database/          # Infrastruktur koneksi SQLAlchemy
+│       ├── database/          # Koneksi SQLAlchemy & model ORM (regulations, documents, versions)
 │       ├── domain/            # Model domain yang independen dari infrastruktur
-│       ├── ingestion/         # Abstraksi protokol Loader & Parser
+│       ├── ingestion/         # Adapter sumber (BI, OJK), downloader, storage, service, CLI
+│       │   ├── adapters/      # BankIndonesiaAdapter, OjkAdapter, Pembantu HTTP Base
+│       │   ├── downloader.py  # DownloadManager dengan retries, backoff & rate-limiting
+│       │   ├── storage.py     # LocalStorageManager untuk PDF mentah dan JSON metadata
+│       │   ├── service.py     # Orkestrator IngestionService & semantik dry-run
+│       │   └── cli.py         # Entrypoint CLI (python -m finreg.ingestion.cli)
 │       ├── documents/         # Struktur pemrosesan dokumen
 │       ├── retrieval/         # Protokol Embedding, Retriever, & Reranker
 │       ├── generation/        # Abstraksi protokol Penyedia LLM
@@ -139,8 +148,12 @@ finreg-intelligence-rag/
 │       ├── api/               # Fondasi aplikasi FastAPI
 │       └── observability/    # Penyiapan logging terstruktur
 │
-├── migrations/                # Revisi migrasi basis data Alembic
-├── tests/                     # Suite pengujian (unit & integrasi)
+├── migrations/                # Revisi migrasi basis data Alembic (001_baseline, 002_ingestion_registry)
+├── scripts/                   # Skrip pengujian & smoke test (smoke_test_ingestion.py)
+├── tests/                     # Suite pengujian (unit, integrasi, fixtures)
+│   ├── fixtures/              # Fixture HTML (halaman listing & detail BI & OJK)
+│   ├── integration/           # Pengujian integrasi untuk layanan ingesti & idempotensi DB
+│   └── unit/                  # Pengujian unit untuk pengaturan, model domain, adapter, downloader
 ├── docs/                      # Dokumentasi arsitektur & model data
 │   ├── architecture.md
 │   ├── architecture.id.md
@@ -150,7 +163,7 @@ finreg-intelligence-rag/
 │   └── development.id.md
 │
 ├── configs/                   # Berkas konfigurasi tambahan saat runtime
-└── data/                      # README tata kelola data dan dataset lokal
+└── data/                      # README tata kelola data, PDF mentah (data/raw), dan JSON metadata
 ```
 
 ---
@@ -179,9 +192,13 @@ finreg-intelligence-rag/
    alembic upgrade head
    ```
 
-4. **Jalankan Server FastAPI**:
+4. **Jalankan CLI Ingesti**:
    ```bash
-   uvicorn finreg.api.main:app --reload
+   # Jalankan simulasi (dry-run) ingesti BI
+   python -m finreg.ingestion.cli --source bi --limit 5 --dry-run
+
+   # Jalankan ingesti langsung untuk BI dan OJK
+   python -m finreg.ingestion.cli --source all --limit 10
    ```
 
 5. **Jalankan Perintah Verifikasi**:
@@ -196,31 +213,33 @@ Untuk instruksi penyiapan lebih lengkap, lihat [`docs/development.id.md`](docs/d
 
 ---
 
-## 10. Status Proyek Saat Ini (Fase 1)
+## 10. Status Proyek Saat Ini (Fase 2)
 
-| Fitur / Subsystem | Status |
-|---|---|
-| Struktur Proyek & Alat Kerja | **Terimplementasi** |
-| Pengaturan Bertipe (`Pydantic Settings`) | **Terimplementasi** |
-| Entitas Domain Murni & Value Objects | **Terimplementasi** |
-| Protokol Penyedia AI Independen Vendor | **Terimplementasi** |
-| Infrastruktur PostgreSQL 16 + pgvector | **Terimplementasi** |
-| Migrasi Basis Alembic | **Terimplementasi** |
-| Aplikasi FastAPI & `GET /health` | **Terimplementasi** |
-| Suite Pengujian (Pengaturan, Domain, API Health) | **Terimplementasi** |
-| Web Scraping & Ingesti PDF | *Direncanakan (Fase 2)* |
-| Pemrosesan Dokumen & Pemotongan Chunk | *Direncanakan (Fase 2)* |
-| Indeksasi Vektor & Pencarian Hibrida | *Direncanakan (Fase 3)* |
-| Reranking & Generasi Tergounding LLM | *Direncanakan (Fase 4)* |
-| Evaluasi Otomatis Triad RAG | *Direncanakan (Fase 5)* |
+| Fitur / Subsystem | Status | Detail |
+|---|---|---|
+| Struktur Proyek & Alat Kerja | **Terimplementasi** | `pyproject.toml`, `docker-compose.yml`, `ruff`, `mypy`, `pytest` |
+| Pengaturan Bertipe (`Pydantic Settings`) | **Terimplementasi** | Pengaturan aplikasi, basis data, dan mesin ingesti |
+| Entitas Domain Murni & Value Objects | **Terimplementasi** | `Regulation`, `Document`, `Section`, `Chunk`, `Citation` |
+| Protokol Penyedia AI Independen Vendor | **Terimplementasi** | `DocumentLoader`, `DocumentParser`, `EmbeddingProvider`, `Retriever`, `Reranker`, `LLMProvider` |
+| Infrastruktur PostgreSQL 16 + pgvector | **Terimplementasi** | Kontainer Docker Compose & migrasi Alembic |
+| Adapter Sumber Ingesti | **Terimplementasi (Fase 2)** | `BankIndonesiaAdapter` (PBI) & `OjkAdapter` (POJK) |
+| Downloader & Penyimpanan Berkas Mentah | **Terimplementasi (Fase 2)** | Downloader HTTP terisi batas laju, retries backoff, checksum SHA-256, penyimpanan mentah |
+| Skema ORM Registri Ingesti | **Terimplementasi (Fase 2)** | `regulations`, `documents`, `document_versions` dengan indeks unik parsial `uq_document_versions_current` |
+| Orkestrator Ingesti & CLI | **Terimplementasi (Fase 2)** | `IngestionService` dan CLI (`python -m finreg.ingestion.cli`) |
+| Suite Pengujian & Smoke Test | **Terimplementasi (Fase 2)** | Pengujian unit berbasis fixture, pengujian integrasi DB terisolasi, `smoke_test_ingestion.py` |
+| Aplikasi FastAPI & `GET /health` | **Terimplementasi** | Endpoint telemetri kesehatan layanan |
+| Pemrosesan Dokumen Bab/Pasal/Ayat | *Direncanakan (Fase 3)* | Ekstraksi struktur dan pemotongan chunk token |
+| Indeksasi Vektor & Pencarian Hibrida | *Direncanakan (Fase 3)* | Generasi embedding dan pencarian hibrida `pgvector` |
+| Reranking & Generasi Tergounding LLM | *Direncanakan (Fase 4)* | Reranking dan format sitasi |
+| Evaluasi Otomatis Triad RAG | *Direncanakan (Fase 5)* | Metrik kesetiaan dan relevansi |
 
 ---
 
 ## 11. Peta Jalan Proyek
 
-- **Fase 1 (Saat Ini)**: Fondasi, model domain, protokol penyedia AI, infrastruktur basis data, endpoint kesehatan API, dokumentasi.
-- **Fase 2**: Alur ingesti dokumen, parsing seksi PDF, pemotongan chunk token, dan migrasi skema persistensi.
-- **Fase 3**: Generasi embedding, indeksasi `pgvector`, pencarian sparse BM25, dan penggabungan retriever hibrida.
+- **Fase 1**: Fondasi, model domain, protokol penyedia AI, infrastruktur basis data, endpoint kesehatan API, dokumentasi.
+- **Fase 2 (Saat Ini)**: Alur ingesti data untuk BI PBI dan OJK POJK, adapter sumber, downloader dengan retries/rate-limiting, checksumming SHA-256, penyimpanan berkas mentah, registri basis data, idempotensi via indeks unik parsial, alat CLI.
+- **Fase 3**: Parsing seksi dokumen PDF (Bab/Pasal/Ayat), pemotongan chunk token, generasi embedding, indeksasi `pgvector`, pencarian sparse BM25, dan penggabungan retriever hibrida.
 - **Fase 4**: Integrasi penyedia LLM, sintesis prompt, generasi jawaban tergounding, dan format sitasi.
 - **Fase 5**: Alur evaluasi RAG, telemetri pencarian, dan suite observabilitas.
 

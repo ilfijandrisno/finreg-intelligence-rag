@@ -18,9 +18,15 @@ The architecture emphasizes modularity, data lineage traceability, strict separa
                                   │
                                   ▼
 +-------------------------------------------------------------------+
-|                      Ingestion Layer                              |
-|   - Fetch document metadata & raw PDFs                           |
-|   - Compute SHA-256 checksums & preserve source URLs              |
+|                      Ingestion Layer (Phase 2)                    |
+|   - Source Adapters (BankIndonesiaAdapter & OjkAdapter)           |
+|   - Listing discovery & Metadata parsing                          |
+|   - Attachment DocumentReference resolution                       |
+|   - Resilient DownloadManager (httpx + backoff + rate-limiting)    |
+|   - Deterministic SHA-256 checksum computation                    |
+|   - Local raw file storage (data/raw/...) & metadata JSON audit   |
+|   - Relational Ingestion Registry (regulations, documents, ver)   |
+|   - Idempotency via PostgreSQL partial unique index               |
 +-------------------------------------------------------------------+
                                   │
                                   ▼
@@ -66,12 +72,16 @@ The architecture emphasizes modularity, data lineage traceability, strict separa
 | Provider Abstractions | **Implemented (Phase 1)** | Python `Protocol` interfaces for Loader, Parser, Embedding, Retriever, Reranker, LLM |
 | Database Infrastructure | **Implemented (Phase 1)** | PostgreSQL 16 + `pgvector` container & Alembic baseline migration |
 | API Foundation | **Implemented (Phase 1)** | FastAPI application exposing lightweight `GET /health` endpoint |
-| Document Ingestion | *Planned (Phase 2)* | Web scraping, metadata extraction, and PDF downloading |
-| Document Processing | *Planned (Phase 2)* | Structure parsing into articles/sections and token chunking |
-| Persistence Schema | *Planned (Phase 2)* | Business ORM models and tables (`documents`, `sections`, `chunks`, `embeddings`) |
+| Source Adapters | **Implemented (Phase 2)** | `BankIndonesiaAdapter` (PBI) and `OjkAdapter` (POJK) |
+| Resilient Downloader | **Implemented (Phase 2)** | `DownloadManager` with rate-limiting, exponential backoff retries, and SHA-256 |
+| Raw Document Storage | **Implemented (Phase 2)** | `LocalStorageManager` storing PDFs at `data/raw/` and metadata JSON artifacts |
+| Ingestion Registry ORM | **Implemented (Phase 2)** | SQLAlchemy ORM tables `regulations`, `documents`, `document_versions` |
+| Idempotency Invariants | **Implemented (Phase 2)** | `UNIQUE` constraints and partial unique index `uq_document_versions_current` |
+| Ingestion Orchestrator & CLI | **Implemented (Phase 2)** | `IngestionService` and CLI (`python -m finreg.ingestion.cli`) |
+| Document Processing | *Planned (Phase 3)* | Structure parsing into articles/sections (Bab/Pasal/Ayat) and token chunking |
 | Vector Indexing | *Planned (Phase 3)* | Embedding generation and `pgvector` index creation |
 | Hybrid Retrieval | *Planned (Phase 3)* | Combined dense vector search and sparse keyword retrieval |
-| Cross-Encoder Reranking | *Planned (Phase 3)* | Context re-scoring and filtering |
+| Cross-Encoder Reranking | *Planned (Phase 4)* | Context re-scoring and filtering |
 | Grounded Generation | *Planned (Phase 4)* | LLM integration and citation formatting |
 | RAG Evaluation | *Planned (Phase 5)* | RAG triad evaluation (faithfulness, answer relevance, context precision) |
 
@@ -81,4 +91,4 @@ The architecture emphasizes modularity, data lineage traceability, strict separa
 
 1. **Vendor Agnosticism**: All external AI providers (embeddings, LLMs, rerankers) interact with the core domain via abstract Python protocols (`EmbeddingProvider`, `LLMProvider`, `Reranker`). No hardcoded framework or vendor lock-in.
 2. **Strict Data Lineage**: Grounded answers must map directly back to exact regulation numbers, articles (*Pasal*), clauses (*Ayat*), and official source URLs.
-3. **No Heavy Framework Overhead**: Core logic is built directly using standard library typing and lightweight frameworks (FastAPI, Pydantic, SQLAlchemy), avoiding opaque orchestration frameworks like LangChain or LlamaIndex.
+3. **No Heavy Framework Overhead**: Core logic is built directly using standard library typing and lightweight frameworks (FastAPI, Pydantic, SQLAlchemy, HTTPX, BeautifulSoup4), avoiding opaque orchestration frameworks like LangChain, LlamaIndex, or Scrapy.

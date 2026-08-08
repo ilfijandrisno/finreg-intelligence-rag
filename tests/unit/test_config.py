@@ -13,7 +13,7 @@ def test_default_settings() -> None:
     assert settings.environment == "development"
     assert settings.log_level == "INFO"
     assert settings.postgres_host == "localhost"
-    assert settings.postgres_port == 5432
+    assert settings.postgres_port == 5433
     assert settings.postgres_db == "finreg_db"
     assert settings.postgres_user == "finreg_user"
     assert settings.postgres_password == "finreg_password"

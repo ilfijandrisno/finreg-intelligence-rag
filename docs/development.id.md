@@ -38,14 +38,6 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Atau menggunakan `uv` (direkomendasikan):
-
-```bash
-uv venv .venv
-source .venv/bin/activate  # atau .\.venv\Scripts\Activate.ps1 pada Windows
-uv pip install -e ".[dev]"
-```
-
 ---
 
 ## Infrastruktur Lokal & Basis Data
@@ -64,7 +56,7 @@ docker compose ps
 
 ### 2. Terapkan Migrasi Basis Data Alembic
 
-Terapkan migrasi basis (mengaktifkan ekstensi `pgvector`):
+Terapkan migrasi basis data (001_baseline_pgvector, 002_ingestion_registry):
 
 ```bash
 alembic upgrade head
@@ -78,17 +70,36 @@ alembic current
 
 ---
 
-## Menjalankan Layanan Aplikasi
+## Menjalankan Ingesti Data & Smoke Test
 
-### Jalankan Server Pengembangan FastAPI
+### 1. Jalankan CLI Ingesti
+
+Jalankan penemuan dan resolusi metadata dalam mode simulasi (*dry-run* tanpa penulisan basis data atau berkas):
 
 ```bash
-uvicorn finreg.api.main:app --reload --host 0.0.0.0 --port 8000
+python -m finreg.ingestion.cli --source bi --limit 5 --dry-run
 ```
 
-Akses endpoint API di peramban atau HTTP client Anda:
-- **Pemeriksaan Kesehatan**: `GET http://localhost:8000/health`
-- **Dokumentasi Swagger OpenAPI**: `http://localhost:8000/docs`
+Jalankan ingesti data langsung untuk Bank Indonesia (PBI) atau OJK (POJK):
+
+```bash
+# Ingesti regulasi Peraturan Bank Indonesia (PBI)
+python -m finreg.ingestion.cli --source bi --limit 10
+
+# Ingesti regulasi Peraturan OJK (POJK)
+python -m finreg.ingestion.cli --source ojk --limit 10
+
+# Ingesti seluruh sumber yang didukung
+python -m finreg.ingestion.cli --source all --limit 10
+```
+
+### 2. Jalankan Smoke Test Ingesti Langsung
+
+Jalankan skrip smoke test mandiri untuk menguji konektivitas jaringan portal resmi, resolusi adapter, dan idempotensi:
+
+```bash
+python scripts/smoke_test_ingestion.py --source all --limit 2
+```
 
 ---
 
@@ -100,11 +111,7 @@ Akses endpoint API di peramban atau HTTP client Anda:
 pytest
 ```
 
-Jalankan dengan keluaran rinci:
-
-```bash
-pytest -v -s
-```
+Catatan: Pengujian jaringan langsung dikecualikan dari eksekusi `pytest` standar dan menggunakan fixture HTML lokal.
 
 ### 2. Pemeriksaan Linting & Format Kode
 
@@ -141,3 +148,4 @@ mypy src
 1. **Tanpa Kredensial di Git**: Jangan pernah memasukkan `.env` atau kredensial ke repositori. Selalu gunakan placeholder di `.env.example`.
 2. **Utamakan Antarmuka (Interface First)**: Pertahankan definisi protokol di `protocols.py` saat memperkenalkan komponen ingesti atau pencarian baru.
 3. **Tanpa Pengujian atau Data Palsu**: Pastikan pengujian mencerminkan kontrak validasi nyata tanpa bloat *mock*.
+4. **Idempotensi & Rekam Jejak Bersih**: Proses ingesti harus bersifat idempotent. Berkas PDF mentah disimpan ke `data/raw/` dan dikecualikan dari Git melalui `.gitignore`.

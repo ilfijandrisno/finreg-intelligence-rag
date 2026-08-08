@@ -25,10 +25,33 @@ class Settings(BaseSettings):
 
     # PostgreSQL Database
     postgres_host: str = Field(default="localhost", description="PostgreSQL host")
-    postgres_port: int = Field(default=5432, description="PostgreSQL port")
+    postgres_port: int = Field(default=5433, description="PostgreSQL port")
     postgres_db: str = Field(default="finreg_db", description="PostgreSQL database name")
     postgres_user: str = Field(default="finreg_user", description="PostgreSQL username")
     postgres_password: str = Field(default="finreg_password", description="PostgreSQL password")
+
+    # Ingestion Engine Settings (Phase 2)
+    max_discovered_documents: int = Field(
+        default=50, description="Maximum discovered regulations limit per ingestion run"
+    )
+    request_delay_seconds: float = Field(
+        default=1.0, description="Rate-limiting delay between outbound HTTP requests"
+    )
+    max_concurrent_downloads: int = Field(
+        default=2, description="Maximum concurrent download workers limit"
+    )
+    download_timeout_seconds: float = Field(
+        default=30.0, description="Timeout in seconds for HTTP requests"
+    )
+    max_retries: int = Field(
+        default=3, description="Maximum retry attempts for transient HTTP errors"
+    )
+    raw_data_dir: str = Field(
+        default="data/raw", description="Root directory path for raw document storage"
+    )
+    metadata_data_dir: str = Field(
+        default="data/metadata", description="Root directory path for JSON metadata storage"
+    )
 
     # Vector Database Settings (Anticipated for Future Phases)
     vector_table: str = Field(default="chunk_embeddings", description="Vector database table name")

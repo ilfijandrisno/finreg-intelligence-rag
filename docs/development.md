@@ -38,14 +38,6 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Or using `uv` (recommended):
-
-```bash
-uv venv .venv
-source .venv/bin/activate  # or .\.venv\Scripts\Activate.ps1 on Windows
-uv pip install -e ".[dev]"
-```
-
 ---
 
 ## Local Infrastructure & Database
@@ -64,7 +56,7 @@ docker compose ps
 
 ### 2. Apply Alembic Database Migrations
 
-Apply the baseline migration (enables `pgvector` extension):
+Apply migrations (001_baseline_pgvector, 002_ingestion_registry):
 
 ```bash
 alembic upgrade head
@@ -78,33 +70,48 @@ alembic current
 
 ---
 
-## Running Application Services
+## Running Data Ingestion & Live Smoke Tests
 
-### Start FastAPI Development Server
+### 1. Execute Ingestion CLI
+
+Run discovery and metadata resolution in dry-run mode (no database or disk writes):
 
 ```bash
-uvicorn finreg.api.main:app --reload --host 0.0.0.0 --port 8000
+python -m finreg.ingestion.cli --source bi --limit 5 --dry-run
 ```
 
-Access API endpoints in your browser or HTTP client:
-- **Health Check**: `GET http://localhost:8000/health`
-- **Swagger OpenAPI Docs**: `http://localhost:8000/docs`
+Run live data ingestion for Bank Indonesia (PBI) or OJK (POJK):
+
+```bash
+# Ingest Bank Indonesia PBI regulations
+python -m finreg.ingestion.cli --source bi --limit 10
+
+# Ingest OJK POJK regulations
+python -m finreg.ingestion.cli --source ojk --limit 10
+
+# Ingest all supported sources
+python -m finreg.ingestion.cli --source all --limit 10
+```
+
+### 2. Run Live Ingestion Smoke Test
+
+Execute the standalone live smoke test script against official portals to verify network connectivity, adapter resolution, and idempotency:
+
+```bash
+python scripts/smoke_test_ingestion.py --source all --limit 2
+```
 
 ---
 
 ## Testing & Quality Control Commands
 
-### 1. Run Automated Unit Tests
+### 1. Run Automated Test Suite
 
 ```bash
 pytest
 ```
 
-Run with detailed verbose output and coverage:
-
-```bash
-pytest -v -s
-```
+Note: Live network tests are excluded from normal `pytest` execution and use local HTML fixtures.
 
 ### 2. Code Linting & Formatting Check
 
@@ -141,3 +148,4 @@ mypy src
 1. **No Secrets in Git**: Never commit `.env` or credentials. Always use `.env.example` placeholders.
 2. **Interface First**: Maintain protocol definitions in `protocols.py` when introducing new ingestion or retrieval components.
 3. **No Fake Tests or Data**: Ensure tests reflect real validation contracts without mock bloat.
+4. **Idempotency & Clean Lineage**: Ingestion runs must be idempotent. Raw PDFs are saved to `data/raw/` and excluded from Git via `.gitignore`.
