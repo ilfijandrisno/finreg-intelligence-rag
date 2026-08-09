@@ -1,94 +1,54 @@
-# Arsitektur Sistem — FinReg Intelligence
+# FinReg Intelligence RAG: Arsitektur Sistem & Alur Data
 
-## Gambaran Umum
+## 1. Ringkasan Sistem
 
-**FinReg Intelligence** adalah platform Retrieval-Augmented Generation (RAG) berstandar produksi yang dirancang untuk mendasarkan (*grounding*) jawaban kecerdasan buatan pada regulasi keuangan resmi Indonesia yang diterbitkan oleh **Bank Indonesia (BI)** dan **Otoritas Jasa Keuangan (OJK)**.
+FinReg Intelligence RAG adalah platform legal technology tingkat produksi yang dirancang untuk otomasi ingestasi, indeksasi hibrida, reranking, dan pencarian jawaban berbasis bukti hukum (*grounded QA*) atas peraturan keuangan Indonesia yang diterbitkan oleh Bank Indonesia (BI) dan Otoritas Jasa Keuangan (OJK).
 
-Arsitektur sistem menekankan pada modularitas, keterlacakan rekam jejak data (*data lineage*), pemisahan tegas antara model domain dan infrastruktur eksternal, serta abstraksi penyedia AI yang independen dari vendor.
+Platform ini menjamin provensi hukum yang ketat, sitasi inline yang terverifikasi, isolasi konteks, dan mekanisme *abstention* otomatis berbasis ambang batas skor.
 
 ---
 
-## Alur Data Target End-to-End
+## 2. Arsitektur Sistem End-to-End
 
-```
-+-------------------------------------------------------------------+
-|               Sumber Regulasi Publik Resmi                        |
-|                 (Portal Bank Indonesia & OJK)                     |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                      Lapisan Ingesti (Fase 2)                     |
-|   - Adapter Sumber (BankIndonesiaAdapter & OjkAdapter)            |
-|   - Penemuan listing & Ekstraksi metadata                         |
-|   - Resolusi referensi dokumen lampiran (DocumentReference)       |
-|   - DownloadManager Andal (httpx + backoff + rate-limiting)       |
-|   - Perhitungan checksum SHA-256 deterministik                    |
-|   - Penyimpanan mentah lokal (data/raw/...) & metadata JSON       |
-|   - Registri Ingesti Relasional (regulations, documents, ver)     |
-|   - Idempotensi via indeks unik parsial PostgreSQL                |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                 Lapisan Pemrosesan Dokumen                        |
-|   - Strukturkan regulasi ke Bab, Pasal, & Ayat                    |
-|   - Hasilkan Chunk teks semantik dengan rekam jejak posisi        |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                    Penyimpanan & Indeksasi                        |
-|   - Relational DB (PostgreSQL 16) untuk metadata & rekam jejak    |
-|   - Vector DB (pgvector) untuk embedding vektor padat             |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                  Pencarian Hibrida & Reranking                    |
-|   - Pencarian vektor semantik (pgvector)                          |
-|   - Pencarian kata kunci sparse (BM25 / PostgreSQL Full-Text)     |
-|   - Reciprocal Rank Fusion (RRF) & Cross-Encoder Reranking        |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                    Generasi & Grounding                           |
-|   - Sintesis prompt dengan chunk konteks hasil pencarian          |
-|   - Generasi jawaban oleh LLM                                     |
-|   - Ekstraksi Sitasi regulasi hukum resmi secara otomatis         |
-+-------------------------------------------------------------------+
+```mermaid
+flowchart TD
+    subgraph Ingestion["Fase 2 & 3: Ingestasi & Pemrosesan Dokumen"]
+        PDF["PDF Peraturan Mentah"] --> Extractor["PyMuPDF Reader"]
+        Extractor --> Normalizer["Pembersih & Normalisasi Teks"]
+        Parser --> Tree["Pohon Dokumen Hirarkis (Node)"]
+        Normalizer --> Parser["Context-Aware State-Machine Parser"]
+        Tree --> Chunker["Semantic Legal Chunker (Max 1500 karakter)"]
+        Chunker --> DB_Chunks[("PostgreSQL: retrieval_chunks")]
+    end
+
+    subgraph Indexing["Fase 4: Indeksasi Vektor Hibrida"]
+        DB_Chunks --> HNSW["Indeks Vektor HNSW (cosine)"]
+        DB_Chunks --> GIN["Indeks Teks Lengkap GIN (tsvector)"]
+    end
+
+    subgraph Retrieval["Fase 4 & 5: Pencarian Hibrida Multi-Tahap"]
+        UserQuery["Kueri Pengguna"] --> VectorSearch["VectorSearchService (HNSW)"]
+        UserQuery --> LexicalSearch["LexicalSearchService (tsvector)"]
+        VectorSearch --> RRF["Penggabungan Hybrid RRF (k=60)"]
+        LexicalSearch --> RRF
+        RRF --> Reranker["RerankingService (BAAI/bge-reranker-v2-m3)"]
+    end
+
+    subgraph Generation["Fase 6 & 7: RAG Terverifikasi & FastAPI"]
+        Reranker --> Gate{"Skor Tertinggi >= Ambang Batas (0.30)?"}
+        Gate -- Tidak --> Abstain["Jawaban Abstain (Kosong)"]
+        Gate -- Ya --> PromptBuilder["Isolasi Konteks & Asamblesi Prompt"]
+        PromptBuilder --> LLM["LLM Provider (gpt-4o-mini / Mock)"]
+        LLM --> CitVal["Validator Sitasi (Regex [C1])"]
+        CitVal --> FastApi["FastAPI REST Endpoint (/api/v1/rag/query)"]
+    end
 ```
 
 ---
 
-## Status Implementasi Komponen
+## 3. Komponen Utama
 
-| Komponen | Status | Detail |
-|---|---|---|
-| Repositori & Alat Kerja | **Terimplementasi (Fase 1)** | `pyproject.toml`, `docker-compose.yml`, `ruff`, `mypy`, `pytest` |
-| Pengaturan Aplikasi | **Terimplementasi (Fase 1)** | Pengaturan `Pydantic` bertipe yang dimuat dari `.env` |
-| Model Domain | **Terimplementasi (Fase 1)** | Entitas Python murni (`Regulation`, `Document`, `Section`, `Chunk`, `Citation`) |
-| Abstraksi Penyedia AI | **Terimplementasi (Fase 1)** | Antarmuka `Protocol` Python untuk Loader, Parser, Embedding, Retriever, Reranker, LLM |
-| Infrastruktur Basis Data | **Terimplementasi (Fase 1)** | Kontainer PostgreSQL 16 + `pgvector` & migrasi basis Alembic |
-| Fondasi API | **Terimplementasi (Fase 1)** | Aplikasi FastAPI yang menyediakan endpoint ringan `GET /health` |
-| Adapter Sumber Ingesti | **Terimplementasi (Fase 2)** | `BankIndonesiaAdapter` (PBI) dan `OjkAdapter` (POJK) |
-| Downloader Andal | **Terimplementasi (Fase 2)** | `DownloadManager` dengan rate-limiting, retries backoff, dan SHA-256 |
-| Penyimpanan Berkas Mentah | **Terimplementasi (Fase 2)** | `LocalStorageManager` menyimpan PDF di `data/raw/` dan metadata JSON |
-| Skema ORM Registri Ingesti | **Terimplementasi (Fase 2)** | Tabel ORM SQLAlchemy `regulations`, `documents`, `document_versions` |
-| Invarian Idempotensi | **Terimplementasi (Fase 2)** | Batasan `UNIQUE` dan indeks unik parsial `uq_document_versions_current` |
-| Orkestrator Ingesti & CLI | **Terimplementasi (Fase 2)** | `IngestionService` dan CLI (`python -m finreg.ingestion.cli`) |
-| Pemrosesan Dokumen | *Direncanakan (Fase 3)* | Pemisahan struktur ke pasal/bab (Bab/Pasal/Ayat) dan pemotongan chunk token |
-| Indeksasi Vektor | *Direncanakan (Fase 3)* | Pembuatan embedding dan pembuatan indeks `pgvector` |
-| Pencarian Hibrida | *Direncanakan (Fase 3)* | Kombinasi pencarian vektor padat dan kata kunci sparse |
-| Reranking Cross-Encoder | *Direncanakan (Fase 4)* | Penilaian ulang konteks dan penyaringan |
-| Generasi Tergounding | *Direncanakan (Fase 4)* | Integrasi LLM dan format sitasi |
-| Evaluasi RAG | *Direncanakan (Fase 5)* | Evaluasi triad RAG (kesetiaan/faithfulness, relevansi jawaban, presisi konteks) |
-
----
-
-## Prinsip Desain Utama
-
-1. **Independensi Vendor**: Seluruh penyedia AI eksternal (embedding, LLM, reranker) berinteraksi dengan domain utama melalui protokol abstrak Python (`EmbeddingProvider`, `LLMProvider`, `Reranker`). Tidak ada keterikatan pada satu kerangka kerja atau vendor tertentu.
-2. **Rekam Jejak Data yang Ketat**: Jawaban yang dihasilkan harus terhubung langsung secara tepat ke nomor regulasi, Pasal, Ayat, dan URL sumber resmi.
-3. **Tanpa Overhead Kerangka Kerja Berat**: Logika inti dibangun langsung menggunakan pustaka standar Python dan kerangka kerja ringan (FastAPI, Pydantic, SQLAlchemy, HTTPX, BeautifulSoup4), menghindari penggunaan kerangka orkestrasi berat seperti LangChain, LlamaIndex, atau Scrapy.
+- **Parser Struktur Hukum**: Parser berbasis *state-machine* kontekstual yang mengekstrak hirarki hukum (`BAB`, `Pasal`, `Ayat`, `Huruf`, `Angka`).
+- **Pencarian Hibrida RRF**: Penggabungan HNSW vector search (`pgvector`) dan BM25 full-text search (`tsvector`) dengan Reciprocal Rank Fusion ($k=60$).
+- **Neural Reranking**: Model Cross-Encoder (`BAAI/bge-reranker-v2-m3`) untuk pemeringkatan ulang berbasis presisi semantik.
+- **RAG Terverifikasi & Abstention**: Evaluasi sitasi berbasis regex deterministik dan penghentian jawaban otomatis jika bukti tidak mencukupi.

@@ -1,94 +1,144 @@
-# System Architecture — FinReg Intelligence
+# FinReg Intelligence RAG: System Architecture & Data Flow
 
-## Overview
+## 1. System Overview
 
-**FinReg Intelligence** is a production-oriented Retrieval-Augmented Generation (RAG) platform designed to ground artificial intelligence answers in official Indonesian financial regulations issued by **Bank Indonesia (BI)** and **Otoritas Jasa Keuangan (OJK)**.
+FinReg Intelligence RAG is a production-grade legal technology platform engineered for automated ingestion, hybrid indexing, reranking, and grounded question answering over Indonesian financial regulations issued by Bank Indonesia (BI) and the Financial Services Authority (OJK).
 
-The architecture emphasizes modularity, data lineage traceability, strict separation of domain models from external infrastructure, and vendor-agnostic provider abstractions.
+The platform guarantees strict legal provenance, verifiable inline citations, context boundary isolation, and explicit score-threshold abstention safeguards.
 
 ---
 
-## Target End-to-End Data Flow
+## 2. End-to-End System Architecture
 
-```
-+-------------------------------------------------------------------+
-|               Official Public Regulatory Sources                  |
-|                 (Bank Indonesia & OJK Portals)                    |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                      Ingestion Layer (Phase 2)                    |
-|   - Source Adapters (BankIndonesiaAdapter & OjkAdapter)           |
-|   - Listing discovery & Metadata parsing                          |
-|   - Attachment DocumentReference resolution                       |
-|   - Resilient DownloadManager (httpx + backoff + rate-limiting)    |
-|   - Deterministic SHA-256 checksum computation                    |
-|   - Local raw file storage (data/raw/...) & metadata JSON audit   |
-|   - Relational Ingestion Registry (regulations, documents, ver)   |
-|   - Idempotency via PostgreSQL partial unique index               |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                     Document Processing Layer                     |
-|   - Structure regulation into Sections, Articles (Pasal), & Clauses|
-|   - Generate semantic text Chunks with positional lineage        |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                      Storage & Indexing                           |
-|   - Relational DB (PostgreSQL 16) for domain metadata & lineage   |
-|   - Vector DB (pgvector) for dense vector embeddings             |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                     Hybrid Retrieval & Reranking                  |
-|   - Dense semantic vector search (pgvector)                       |
-|   - Sparse keyword search (BM25 / PostgreSQL Full-Text)           |
-|   - Reciprocal Rank Fusion (RRF) & Cross-Encoder Reranking        |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                    Generation & Grounding                         |
-|   - Prompt synthesis with retrieved context chunks                |
-|   - LLM answer generation                                         |
-|   - Automatic verifiable legal Citation extraction                |
-+-------------------------------------------------------------------+
+```mermaid
+flowchart TD
+    subgraph Ingestion["Phase 2 & 3: Ingestion & Document Pipeline"]
+        PDF["Raw Regulation PDF"] --> Extractor["PyMuPDF Reader"]
+        Extractor --> Normalizer["Text Normalizer & Cleaner"]
+        Normalizer --> Parser["Context-Aware State-Machine Parser"]
+        Parser --> Tree["Hierarchical Document Tree (Nodes)"]
+        Tree --> Chunker["Semantic Legal Chunker (Max 1500 chars)"]
+        Chunker --> DB_Chunks[("PostgreSQL: retrieval_chunks")]
+    end
+
+    subgraph Indexing["Phase 4: Multi-Vector Indexing"]
+        DB_Chunks --> HNSW["HNSW Vector Index (cosine)"]
+        DB_Chunks --> GIN["Full-Text Search GIN Index (tsvector)"]
+    end
+
+    subgraph Retrieval["Phase 4 & 5: Multi-Stage Hybrid Search"]
+        UserQuery["User Query"] --> VectorSearch["VectorSearchService (HNSW)"]
+        UserQuery --> LexicalSearch["LexicalSearchService (tsvector)"]
+        VectorSearch --> RRF["Hybrid RRF Fusion (k=60)"]
+        LexicalSearch --> RRF
+        RRF --> Reranker["RerankingService (BAAI/bge-reranker-v2-m3)"]
+    end
+
+    subgraph Generation["Phase 6 & 7: Grounded RAG & FastAPI"]
+        Reranker --> Gate{"Top Score >= Threshold (0.30)?"}
+        Gate -- No --> Abstain["Abstain Response (Empty Answer)"]
+        Gate -- Yes --> PromptBuilder["Prompt Assembler & Context Isolation"]
+        PromptBuilder --> LLM["LLM Provider (gpt-4o-mini / Mock)"]
+        LLM --> CitVal["Citation Validator (Regex [C1])"]
+        CitVal --> FastApi["FastAPI REST Endpoint (/api/v1/rag/query)"]
+    end
 ```
 
 ---
 
-## Component Implementation Status
+## 3. Multi-Stage Hybrid Retrieval & Reranking Sequence
 
-| Component | Status | Details |
-|---|---|---|
-| Repository & Tooling | **Implemented (Phase 1)** | `pyproject.toml`, `docker-compose.yml`, `ruff`, `mypy`, `pytest` |
-| Application Settings | **Implemented (Phase 1)** | Typed `Pydantic` settings loading from `.env` |
-| Domain Models | **Implemented (Phase 1)** | Pure Python entities (`Regulation`, `Document`, `Section`, `Chunk`, `Citation`) |
-| Provider Abstractions | **Implemented (Phase 1)** | Python `Protocol` interfaces for Loader, Parser, Embedding, Retriever, Reranker, LLM |
-| Database Infrastructure | **Implemented (Phase 1)** | PostgreSQL 16 + `pgvector` container & Alembic baseline migration |
-| API Foundation | **Implemented (Phase 1)** | FastAPI application exposing lightweight `GET /health` endpoint |
-| Source Adapters | **Implemented (Phase 2)** | `BankIndonesiaAdapter` (PBI) and `OjkAdapter` (POJK) |
-| Resilient Downloader | **Implemented (Phase 2)** | `DownloadManager` with rate-limiting, exponential backoff retries, and SHA-256 |
-| Raw Document Storage | **Implemented (Phase 2)** | `LocalStorageManager` storing PDFs at `data/raw/` and metadata JSON artifacts |
-| Ingestion Registry ORM | **Implemented (Phase 2)** | SQLAlchemy ORM tables `regulations`, `documents`, `document_versions` |
-| Idempotency Invariants | **Implemented (Phase 2)** | `UNIQUE` constraints and partial unique index `uq_document_versions_current` |
-| Ingestion Orchestrator & CLI | **Implemented (Phase 2)** | `IngestionService` and CLI (`python -m finreg.ingestion.cli`) |
-| Document Processing | *Planned (Phase 3)* | Structure parsing into articles/sections (Bab/Pasal/Ayat) and token chunking |
-| Vector Indexing | *Planned (Phase 3)* | Embedding generation and `pgvector` index creation |
-| Hybrid Retrieval | *Planned (Phase 3)* | Combined dense vector search and sparse keyword retrieval |
-| Cross-Encoder Reranking | *Planned (Phase 4)* | Context re-scoring and filtering |
-| Grounded Generation | *Planned (Phase 4)* | LLM integration and citation formatting |
-| RAG Evaluation | *Planned (Phase 5)* | RAG triad evaluation (faithfulness, answer relevance, context precision) |
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as API Client
+    participant API as FastAPI Router
+    participant RAG as RAGService
+    participant Rerank as RerankingService
+    participant Hybrid as HybridRetrievalService
+    participant Vector as VectorSearchService
+    participant Lexical as LexicalSearchService
+    participant DB as PostgreSQL Database
+
+    Client->>API: POST /api/v1/rag/query { query }
+    API->>RAG: search_and_generate(query)
+    RAG->>Rerank: search(query, top_n=5, hybrid_top_k=20)
+    Rerank->>Hybrid: search(query, top_k=20)
+    
+    par Dense Vector Search
+        Hybrid->>Vector: search(query, top_k=20)
+        Vector->>DB: Cosine Similarity Query (HNSW)
+        DB-->>Vector: Dense Vector Results
+    and Lexical Full-Text Search
+        Hybrid->>Lexical: search(query, top_k=20)
+        Lexical->>DB: tsvector Websearch Query (GIN)
+        DB-->>Lexical: BM25 Lexical Results
+    end
+
+    Vector-->>Hybrid: Dense Ranked List
+    Lexical-->>Hybrid: Lexical Ranked List
+    Hybrid->>Hybrid: Apply Reciprocal Rank Fusion (RRF k=60)
+    Hybrid-->>Rerank: Top-20 Hybrid Candidates
+
+    Rerank->>Rerank: BAAI/bge-reranker-v2-m3 Batch Scoring
+    Rerank-->>RAG: Top-5 Reranked Results
+
+    alt Top Score < Minimum Threshold (0.30)
+        RAG-->>API: Abstained GenerationResult
+        API-->>Client: HTTP 200 { abstained: true, answer: "" }
+    else Top Score >= Threshold
+        RAG->>RAG: Assemble Context Blocks & Call LLM
+        RAG->>RAG: Deterministic Regex Citation Validation ([C1])
+        RAG-->>API: Validated GenerationResult
+        API-->>Client: HTTP 200 { answer, citations, report }
+    end
+```
 
 ---
 
-## Key Design Principles
+## 4. Phase 6 Grounded RAG Enforcement State Machine
 
-1. **Vendor Agnosticism**: All external AI providers (embeddings, LLMs, rerankers) interact with the core domain via abstract Python protocols (`EmbeddingProvider`, `LLMProvider`, `Reranker`). No hardcoded framework or vendor lock-in.
-2. **Strict Data Lineage**: Grounded answers must map directly back to exact regulation numbers, articles (*Pasal*), clauses (*Ayat*), and official source URLs.
-3. **No Heavy Framework Overhead**: Core logic is built directly using standard library typing and lightweight frameworks (FastAPI, Pydantic, SQLAlchemy, HTTPX, BeautifulSoup4), avoiding opaque orchestration frameworks like LangChain, LlamaIndex, or Scrapy.
+```mermaid
+stateDiagram-v2
+    [*] --> QueryReceived: User Query Input
+    QueryReceived --> HybridRetrieval: Execute Phase 4C Hybrid RRF Search
+    HybridRetrieval --> NeuralReranking: Execute Phase 5 Cross-Encoder Rerank
+    NeuralReranking --> ThresholdCheck: Check Top Candidate Score
+
+    state ThresholdCheck {
+        [*] --> ScoreEvaluated
+        ScoreEvaluated --> InsufficientScore: Score < 0.30
+        ScoreEvaluated --> SufficientScore: Score >= 0.30
+    }
+
+    InsufficientScore --> AbstainOutput: Return Abstained Response (Safety Safeguard)
+    SufficientScore --> LLMGeneration: Prompt LLM with Sealed Context Blocks
+
+    LLMGeneration --> CitationValidation: Parse Inline Citations [C1]
+
+    state CitationValidation {
+        [*] --> RegexParsing
+        RegexParsing --> ProvenanceCheck: Validate Citation Context IDs
+        ProvenanceCheck --> ValidationPassed: All Tags Valid & Context Bound
+        ProvenanceCheck --> ValidationFailed: Invalid Tag or Citation Hallucination
+    }
+
+    ValidationFailed --> AbstainOutput: Suppress Answer & Abstain
+    ValidationPassed --> FinalOutput: Deliver Grounded Answer & Citations
+    AbstainOutput --> [*]
+    FinalOutput --> [*]
+```
+
+---
+
+## 5. Technology Stack Summary
+
+- **Primary Language**: Python 3.11+
+- **PDF Extraction**: PyMuPDF (`fitz`)
+- **Parser Engine**: Custom Regex Context-Aware State-Machine Parser
+- **Database Layer**: PostgreSQL 16 + `pgvector`
+- **Vector Search Index**: HNSW (`vector_cosine_ops`, $m=16, ef\_construction=64$)
+- **Full-Text Index**: PostgreSQL `tsvector` GIN index (`indonesian` language configuration)
+- **Neural Reranker**: `BAAI/bge-reranker-v2-m3` via HuggingFace `sentence-transformers` CrossEncoder
+- **REST Framework**: FastAPI + Pydantic v2
+- **Testing & Quality**: Pytest, Ruff, Mypy

@@ -1,251 +1,160 @@
-# FinReg Intelligence — Indonesia Financial Regulation RAG
+# FinReg Intelligence RAG: Enterprise Indonesian Financial Regulatory RAG Platform
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg)](https://fastapi.tiangolo.com)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-blue.svg)](https://github.com/pgvector/pgvector)
+[![PostgreSQL 16+](https://img.shields.io/badge/PostgreSQL-16%2B%20%7C%20pgvector-blue)](https://github.com/pgvector/pgvector)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Production%20API-green.svg)](https://fastapi.tiangolo.com/)
+[![Ruff / Mypy Clean](https://img.shields.io/badge/Code%20Quality-Ruff%20%7C%20Mypy%20Strict-brightgreen)](https://github.com/astral-sh/ruff)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Language**: [English](README.md) | [Bahasa Indonesia](README.id.md)
+An enterprise-grade, production-oriented Retrieval-Augmented Generation (RAG) platform engineered specifically for complex Indonesian financial regulations issued by **Bank Indonesia (BI)** and the **Financial Services Authority (OJK)**.
 
----
-
-## 1. Project Overview
-
-**FinReg Intelligence** is an enterprise-oriented, production-engineered Retrieval-Augmented Generation (RAG) platform designed to query, compare, retrieve, and ground artificial intelligence responses directly in official Indonesian financial regulations.
-
-The system targets regulatory acts, regulations, circular letters, and guidance published by **Bank Indonesia (BI)** and **Otoritas Jasa Keuangan (OJK)**, delivering verifiable citations down to specific articles (*Pasal*), clauses (*Ayat*), and official source documents.
+The system combines **hierarchical legal state-machine parsing**, **hybrid HNSW vector + BM25 lexical search**, **neural cross-encoder reranking**, and **grounded generation with strict citation validation and explicit abstention safeguards**.
 
 ---
 
-## 2. Problem Statement
+## 🌟 Engineering Highlights
 
-Navigating Indonesian financial regulations presents significant complexity for financial institutions, fintech operators, compliance officers, and legal analysts:
-
-- **Fragmented Sources**: Regulations are published across separate portals (Bank Indonesia and OJK) as unstructured PDF documents.
-- **Complex Regulatory Lineage**: Regulations frequently amend, supersede, or partially revoke previous acts, creating risk of relying on outdated provisions.
-- **LLM Hallucination Risk**: General-purpose AI models often hallucinate regulatory advice, cite non-existent articles, or confuse Bank Indonesia monetary policy with OJK microprudential supervision.
-- **Lack of Verifiable Grounding**: Standard RAG approaches frequently omit precise legal citations, making answers unusable for compliance auditing.
-
----
-
-## 3. Project Goals
-
-1. **Verifiable Precision**: Ground every generated answer in verifiable excerpts with exact regulation numbers, articles, clauses, and source URLs.
-2. **Regulatory Lineage Awareness**: Explicitly model relationships between regulations (amendments, revocations, implementations).
-3. **Production Engineering Rigor**: Built with clean Python modularity, typed configurations, decoupled domain interfaces, containerized infrastructure, and automated testing.
-4. **Vendor-Agnostic Design**: Ensure zero lock-in to specific LLM or vector database vendors through clean protocol abstractions.
+1. **Context-Aware State-Machine Structural Parser**:
+   - Custom AST-style legal parser that processes complex Indonesian regulatory structures (`BAB`, `Pasal`, `Ayat`, `Huruf`, `Angka`) into explicit hierarchical trees without third-party LLM parsing latency.
+2. **Multi-Stage Hybrid Search (RRF $k=60$)**:
+   - Merges 1536-dimensional dense vector embeddings (`pgvector` HNSW index) and Indonesian BM25 full-text search (`tsvector` GIN index) via Reciprocal Rank Fusion, preserving exact legal article lookup and semantic paraphrases.
+3. **Neural Cross-Encoder Reranking**:
+   - Integrates `BAAI/bge-reranker-v2-m3` via HuggingFace CrossEncoder to score candidate precision before LLM context assembly.
+4. **Deterministic Grounding & Abstention Safeguards**:
+   - Replaces non-deterministic LLM-as-a-judge approaches with deterministic regex citation parsing (`[C1]`), token budgeting, context leak prevention, prompt injection defenses, legal conflict handling, and early score-threshold abstention.
+5. **FastAPI Production RAG Service**:
+   - Includes request tracing (`X-Request-ID`), structured error contracts, and separated process `/health` vs PostgreSQL database `/readiness` endpoints.
+6. **Auditable Evaluation Benchmark**:
+   - Custom evaluation engine supporting MRR@K, HitRate@K, graded nDCG@K, Precision/Recall, Citation Validity, and Abstention Accuracy with evaluation-layer canonical path normalization.
 
 ---
 
-## 4. High-Level Architecture
+## 🏛 System Architecture & Data Flow
 
-The platform follows a modular layered architecture:
+```mermaid
+flowchart TD
+    subgraph Ingestion["PDF Ingestion & Structural Parsing"]
+        PDF["Raw Regulation PDF"] --> Extractor["PyMuPDF Extractor"]
+        Extractor --> Normalizer["Line Normalizer"]
+        Normalizer --> Parser["Context-Aware State-Machine Parser"]
+        Parser --> Tree["Hierarchical Document Tree"]
+        Tree --> Chunker["Semantic Legal Chunker (Max 1500 chars)"]
+        Chunker --> DB[("PostgreSQL Database")]
+    end
 
-```
-+-------------------------------------------------------------------+
-|               Official Regulatory Data Sources                    |
-|             (Bank Indonesia & OJK Public Portals)                 |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                     Ingestion & Processing                        |
-|  - Source Adapters (BankIndonesiaAdapter & OjkAdapter)            |
-|  - Checksum & source metadata tracking                            |
-|  - Resilient DownloadManager (httpx + backoff + rate-limiting)    |
-|  - Deterministic Raw File Storage (data/raw/...)                  |
-|  - PostgreSQL Ingestion Registry (regulations, documents, ver)    |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                      Storage Layer                                |
-|  - Relational Metadata: PostgreSQL 16                             |
-|  - Vector Storage: pgvector (Cosine / L2 / Inner Product)         |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                  Hybrid Retrieval & Reranking                     |
-|  - Dense Vector Search + Sparse Keyword Retrieval (BM25)          |
-|  - Reciprocal Rank Fusion (RRF) & Cross-Encoder Reranking         |
-+-------------------------------------------------------------------+
-                                  │
-                                  ▼
-+-------------------------------------------------------------------+
-|                     API & Grounded Answer                         |
-|  - FastAPI Service                                                |
-|  - LLM Answer Generation with Verifiable Citations                |
-+-------------------------------------------------------------------+
+    subgraph Indexing["Multi-Vector Indexing"]
+        DB --> HNSW["HNSW Vector Index (pgvector)"]
+        DB --> GIN["Full-Text Search GIN Index (tsvector)"]
+    end
+
+    subgraph Retrieval["Multi-Stage Search & Reranking"]
+        UserQuery["User Query"] --> VectorSearch["Vector Search (HNSW)"]
+        UserQuery --> LexicalSearch["Lexical Search (BM25 GIN)"]
+        VectorSearch --> RRF["Hybrid RRF Fusion (k=60)"]
+        LexicalSearch --> RRF
+        RRF --> Reranker["Cross-Encoder (BAAI/bge-reranker-v2-m3)"]
+    end
+
+    subgraph Generation["Grounded RAG & Safety"]
+        Reranker --> Gate{"Top Score >= Threshold (0.30)?"}
+        Gate -- No --> Abstain["Abstain (Empty Answer)"]
+        Gate -- Yes --> LLM["LLM Provider (gpt-4o-mini / Mock)"]
+        LLM --> CitVal["Regex Citation Validator ([C1])"]
+        CitVal --> API["FastAPI Endpoint (/api/v1/rag/query)"]
+    end
 ```
 
----
-
-## 5. RAG & Ingestion Capabilities
-
-- **Official Ingestion Pipeline (Phase 2 Implemented)**: Source adapters for **Bank Indonesia (PBI)** and **Otoritas Jasa Keuangan (POJK)**. Supports pagination discovery, metadata parsing, attachment resolution, resilient downloading with rate-limiting and exponential backoff, SHA-256 checksumming, deterministic local storage, PostgreSQL database persistence, and idempotency guarantees via a partial unique index (`uq_document_versions_current`).
-- **Hybrid Dense-Sparse Retrieval (Planned)**: Combines semantic vector similarity with keyword BM25 retrieval for precise legal terminology matching.
-- **Regulatory Citation Extraction (Planned)**: Generates answers accompanied by structured legal citations.
-- **Cross-Regulation Lineage Lookup (Planned)**: Traces whether a cited article has been amended or revoked by subsequent regulations.
-- **RAG Triad Evaluation (Planned)**: Evaluates faithfulness, context precision, and answer relevance via automated evaluation metrics.
+Detailed architecture diagrams, sequence flowcharts, and state machines are documented in [docs/architecture.md](docs/architecture.md).
 
 ---
 
-## 6. Official Data Sources
+## 📊 Phase 8 Empirical Evaluation Benchmark Results
 
-The ingestion pipeline connects directly to official public regulatory portals:
-- **Bank Indonesia (BI)**: Peraturan Bank Indonesia (PBI) — [https://www.bi.go.id](https://www.bi.go.id)
-- **Otoritas Jasa Keuangan (OJK)**: Peraturan OJK (POJK) — [https://www.ojk.go.id](https://www.ojk.go.id)
+The system includes a custom mathematical evaluation engine executed via `python -m finreg.evaluation.cli`.
 
-*(Note: PADG, SEOJK, PADK source types will be introduced in future phases. Binary PDFs are downloaded dynamically and are never committed to version control.)*
+> **Note on Test Environment & Capabilities**:
+> - **Production Capabilities**: `OpenAIEmbeddingProvider` (`text-embedding-3-small`), `CrossEncoderRerankerProvider` (`BAAI/bge-reranker-v2-m3`), `OpenAILLMProvider` (`gpt-4o-mini`).
+> - **Offline Benchmark Fallbacks**: `MockEmbeddingProvider` (deterministic hash-seeded pseudo-random vectors) and `MockLLMProvider` (offline test stub).
+
+### Retrieval Stage Metrics (In-Domain Population: $N=2$)
+
+| Metric | Stage 1: Dense Vector (Phase 4A) [Non-production Mock] | Stage 2: BM25 Lexical (Phase 4B) | Stage 3: Hybrid RRF (Phase 4C) | Stage 4: Hybrid + Neural Reranker (Phase 5) |
+| :--- | :---: | :---: | :---: | :---: |
+| **MRR@1 / HitRate@1** | 0.0000 | 0.5000 | 0.0000 | 0.5000 |
+| **MRR@5 / HitRate@5** | 0.0000 | **0.5000** | 0.2500 | **0.5000** |
+| **nDCG@5** | 0.0000 | **0.1687** | 0.1064 | **0.1687** |
+| **Precision@5** | 0.0000 | **0.1000** | 0.1000 | **0.1000** |
+| **Recall@5** | 0.0000 | **0.2500** | 0.2500 | **0.2500** |
+
+### Phase 6 Generation & Safety Metrics ($N=3$)
+
+| Metric Name | Score | Technical Analysis |
+| :--- | :---: | :--- |
+| **Citation Validity** | **100.00%** | 100% of generated citation tags strictly follow `[C1]` regex syntax |
+| **Citation Precision** | **50.00%** | 50% of cited context blocks match target canonical legal evidence |
+| **Citation Recall** | **25.00%** | 25% of target gold evidence provisions cited in generation |
+| **Grounding Coverage** | **100.00%** | 100% of answer claims contain valid citations |
+| **Gold Claim Coverage** | **0.00%** | LLM cited `Pasal 16` (p. 7) instead of target `Pasal 1` (p. 2) for Claim 1 |
+| **Unsupported Claim Rate** | **0.00%** | Zero ungrounded claims generated |
+| **Abstention Accuracy** | **100.00%** | 100% accurate abstention on out-of-domain queries |
+
+Full benchmark breakdowns, canonical identity traces, and failure analysis are documented in [docs/eval-report.md](docs/eval-report.md).
 
 ---
 
-## 7. Technology Stack
+## 🛠 Local Setup & Reproducibility
 
-- **Core Language**: Python 3.11+
-- **API Framework**: FastAPI, Uvicorn
-- **HTTP Client & HTML Parsing**: HTTPX, BeautifulSoup4
-- **Configuration & Validation**: Pydantic v2, Pydantic Settings
-- **Primary Relational DB**: PostgreSQL 16
-- **Vector Storage**: pgvector
-- **Database ORM & Migrations**: SQLAlchemy 2.0, Alembic
-- **Testing & Quality**: pytest, pytest-asyncio, Ruff, mypy
-- **Container Infrastructure**: Docker, Docker Compose
+### 1. Requirements & PostgreSQL Container
+```bash
+# Clone Repository
+git clone https://github.com/ilfijandrisno/finreg-intelligence-rag.git
+cd finreg-intelligence-rag
 
----
+# Start PostgreSQL 16 + pgvector container
+docker-compose up -d
 
-## 8. Repository Structure
+# Create Virtual Environment & Install Dependencies
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .\.venv\Scripts\Activate.ps1
+pip install -e .[dev]
 
+# Run Alembic Database Migrations
+alembic upgrade head
 ```
-finreg-intelligence-rag/
-│
-├── README.md                  # Project documentation (English)
-├── README.id.md               # Project documentation (Indonesian)
-├── LICENSE                    # MIT License
-├── .gitignore                 # Git ignore rules (ignores data/raw and data/metadata)
-├── .env.example               # Environment variables template
-├── pyproject.toml             # Python build configuration and dependencies
-├── docker-compose.yml         # Local PostgreSQL 16 + pgvector setup
-├── alembic.ini                # Alembic database migration config
-│
-├── src/
-│   └── finreg/
-│       ├── __init__.py        # Package version initialization
-│       ├── config/            # Typed Pydantic application settings
-│       ├── database/          # SQLAlchemy connection & ORM models (regulations, documents, versions)
-│       ├── domain/            # Infrastructure-independent domain models
-│       ├── ingestion/         # Source adapters (BI, OJK), downloader, storage, service, CLI
-│       │   ├── adapters/      # BankIndonesiaAdapter, OjkAdapter, Base HTTP helper
-│       │   ├── downloader.py  # DownloadManager with retries, backoff & rate-limiting
-│       │   ├── storage.py     # LocalStorageManager for raw PDFs and metadata JSON
-│       │   ├── service.py     # IngestionService orchestrator & dry-run semantics
-│       │   └── cli.py         # CLI entrypoint (python -m finreg.ingestion.cli)
-│       ├── documents/         # Document processing structures
-│       ├── retrieval/         # Embedding, Retriever, & Reranker protocols
-│       ├── generation/        # LLM Provider protocol abstractions
-│       ├── evaluation/        # Evaluation metric interfaces
-│       ├── api/               # FastAPI application foundation
-│       └── observability/    # Structured logging setup
-│
-├── migrations/                # Alembic migration revisions (001_baseline, 002_ingestion_registry)
-├── scripts/                   # Helper & smoke test scripts (smoke_test_ingestion.py)
-├── tests/                     # Test suite (unit, integration, fixtures)
-│   ├── fixtures/              # HTML test fixtures (BI & OJK listing/detail pages)
-│   ├── integration/           # Integration tests for ingestion service & DB idempotency
-│   └── unit/                  # Unit tests for settings, domain models, adapters, downloader
-├── docs/                      # Architectural & data model documentation
-│   ├── architecture.md
-│   ├── architecture.id.md
-│   ├── data-model.md
-│   ├── data-model.id.md
-│   ├── development.md
-│   └── development.id.md
-│
-├── configs/                   # Runtime configuration files
-└── data/                      # Data governance README, raw PDFs (data/raw), and metadata JSON
+
+### 2. Verify System
+```bash
+# Run 103 Unit & Integration Tests
+pytest
+
+# Run Code Quality Checks
+ruff check .
+mypy src
+
+# Execute Benchmark CLI
+python -m finreg.evaluation.cli --dataset-path data/evaluation/benchmark_gold_dataset.json --output-dir data/evaluation/reports
+```
+
+### 3. Launch FastAPI Server
+```bash
+uvicorn finreg.api.main:app --reload --port 8000
 ```
 
 ---
 
-## 9. Development Setup
+## 📚 Documentation Index
 
-### Quickstart
-
-1. **Clone & Configure**:
-   ```bash
-   git clone https://github.com/ilfijandrisno/finreg-intelligence-rag.git
-   cd finreg-intelligence-rag
-   cp .env.example .env
-   ```
-
-2. **Install Dependencies**:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .\.venv\Scripts\Activate.ps1
-   pip install -e ".[dev]"
-   ```
-
-3. **Start Database & Apply Migrations**:
-   ```bash
-   docker compose up -d
-   alembic upgrade head
-   ```
-
-4. **Run Ingestion CLI**:
-   ```bash
-   # Run BI ingestion dry-run
-   python -m finreg.ingestion.cli --source bi --limit 5 --dry-run
-
-   # Run live ingestion for BI and OJK
-   python -m finreg.ingestion.cli --source all --limit 10
-   ```
-
-5. **Run Verification Commands**:
-   ```bash
-   pytest
-   ruff check .
-   ruff format --check .
-   mypy src
-   ```
-
-For detailed onboarding instructions, see [`docs/development.md`](docs/development.md).
+- [Architecture & Data Flow](docs/architecture.md)
+- [Database Schema & Data Model](docs/data-model.md)
+- [Developer Setup & CLI Guide](docs/development.md)
+- [Evaluation Report & Failure Analysis](docs/eval-report.md)
+- [ADR 001: Hybrid RRF Retrieval](docs/adr/001-hybrid-rrf-retrieval.md)
+- [ADR 002: Deterministic Grounding & Abstention](docs/adr/002-deterministic-grounding.md)
+- [ADR 003: Canonical Identity Normalization](docs/adr/003-canonical-eval-identity.md)
+- [Indonesian Version / Versi Bahasa Indonesia](README.id.md)
 
 ---
 
-## 10. Current Project Status (Phase 2)
+## 📄 License
 
-| Feature / Subsystem | Status | Details |
-|---|---|---|
-| Repository Architecture & Tooling | **Implemented** | `pyproject.toml`, `docker-compose.yml`, `ruff`, `mypy`, `pytest` |
-| Typed Configuration (`Pydantic Settings`) | **Implemented** | Application, Database, and Ingestion engine settings |
-| Domain Entities & Value Objects | **Implemented** | `Regulation`, `Document`, `Section`, `Chunk`, `Citation` |
-| Vendor-Agnostic Provider Protocols | **Implemented** | `DocumentLoader`, `DocumentParser`, `EmbeddingProvider`, `Retriever`, `Reranker`, `LLMProvider` |
-| PostgreSQL 16 + pgvector Infrastructure | **Implemented** | Docker Compose container & Alembic migrations |
-| Ingestion Source Adapters | **Implemented (Phase 2)** | `BankIndonesiaAdapter` (PBI) & `OjkAdapter` (POJK) |
-| Resilient Downloader & Storage | **Implemented (Phase 2)** | Rate-limited HTTP downloader, exponential backoff retries, SHA-256 checksum, raw storage |
-| Ingestion Registry ORM Schema | **Implemented (Phase 2)** | `regulations`, `documents`, `document_versions` with partial unique index `uq_document_versions_current` |
-| Ingestion Orchestrator & CLI | **Implemented (Phase 2)** | `IngestionService` and CLI (`python -m finreg.ingestion.cli`) |
-| Ingestion Test Suite & Live Smoke Test | **Implemented (Phase 2)** | Fixture-based unit tests, isolated DB integration tests, `smoke_test_ingestion.py` |
-| Regulatory PDF Structure Parsing | **Implemented (Phase 3A)** | `PdfExtractor`, `TextNormalizer`, `RegulatoryStructureParser`, `StructureValidator`, `document_nodes` |
-| Document Parsing CLI & Test Suite | **Implemented (Phase 3A)** | `python -m finreg.documents.cli`, non-overlapping coverage ratio, composite FK integrity |
-| FastAPI Application & `GET /health` | **Implemented** | Lightweight service health telemetry endpoint |
-| Vector Indexing & Hybrid Retrieval | *Planned (Phase 3B)* | Embedding generation, `pgvector` indexing, and BM25 sparse search |
-| Reranking & LLM Grounded Generation | *Planned (Phase 4)* | Reranking and citation formatting |
-| RAG Triad Automated Evaluation | *Planned (Phase 5)* | Faithfulness and relevance metrics |
-
----
-
-## 11. Project Roadmap
-
-- **Phase 1**: Foundation, domain models, provider protocols, database infrastructure, API health endpoint, documentation.
-- **Phase 2 (Current)**: Data ingestion pipeline for BI PBI and OJK POJK, source adapters, downloader with retries/rate-limiting, SHA-256 checksumming, raw storage, database registry, idempotency via partial unique index, CLI tool.
-- **Phase 3**: PDF document section parsing (Bab/Pasal/Ayat), token chunking, embedding generation, `pgvector` indexing, BM25 sparse search, and hybrid retriever fusion.
-- **Phase 4**: LLM provider integration, prompt synthesis, grounded answer generation, and citation formatting.
-- **Phase 5**: RAG evaluation pipeline, retrieval telemetry, and observability suite.
-
----
-
-## 12. Disclaimer
-
-*This project is an open-source engineering portfolio demonstration. It is not an official publication of Bank Indonesia or Otoritas Jasa Keuangan. Regulatory information provided by future RAG implementations must be verified against official government gazettes before legal or compliance usage.*
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
