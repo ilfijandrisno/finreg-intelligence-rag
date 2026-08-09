@@ -133,6 +133,9 @@ class DocumentVersionORM(Base):
     nodes: Mapped[list["DocumentNodeORM"]] = relationship(
         "DocumentNodeORM", back_populates="document_version", cascade="all, delete-orphan"
     )
+    chunks: Mapped[list["RetrievalChunkORM"]] = relationship(
+        "RetrievalChunkORM", back_populates="document_version", cascade="all, delete-orphan"
+    )
 
 
 class DocumentNodeORM(Base):
@@ -178,3 +181,64 @@ class DocumentNodeORM(Base):
     children: Mapped[list["DocumentNodeORM"]] = relationship(
         "DocumentNodeORM", back_populates="parent", cascade="all, delete-orphan"
     )
+
+
+class RetrievalChunkORM(Base):
+    """PostgreSQL ORM model for retrieval-ready legal text chunks."""
+
+    __tablename__ = "retrieval_chunks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["document_id", "document_version_id"],
+            ["document_versions.document_id", "document_versions.id"],
+            ondelete="CASCADE",
+            name="fk_retrieval_chunks_doc_version",
+        ),
+        ForeignKeyConstraint(
+            ["source_node_id"],
+            ["document_nodes.id"],
+            ondelete="CASCADE",
+            name="fk_retrieval_chunks_source_node",
+        ),
+        UniqueConstraint("document_version_id", "sequence", name="uq_retrieval_chunks_doc_ver_seq"),
+        UniqueConstraint(
+            "document_version_id", "chunk_hash", name="uq_retrieval_chunks_doc_ver_hash"
+        ),
+        Index("idx_retrieval_chunks_doc_ver", "document_id", "document_version_id"),
+        Index("idx_retrieval_chunks_reg_num", "regulation_type", "regulation_number"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(nullable=False)
+    source_node_id: Mapped[UUID] = mapped_column(nullable=False)
+    chunk_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(10), nullable=False)
+    regulation_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    regulation_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    chapter_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    part_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    section_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    article_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    paragraph_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    letter_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    numbered_item: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    part_index: Mapped[int] = mapped_column(nullable=False, default=1)
+    total_parts: Mapped[int] = mapped_column(nullable=False, default=1)
+    structural_path: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    contextual_text: Mapped[str] = mapped_column(Text, nullable=False)
+    character_count: Mapped[int] = mapped_column(nullable=False)
+    word_count: Mapped[int] = mapped_column(nullable=False)
+    page_start: Mapped[int] = mapped_column(nullable=False)
+    page_end: Mapped[int] = mapped_column(nullable=False)
+    sequence: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    document_version: Mapped["DocumentVersionORM"] = relationship(
+        "DocumentVersionORM", back_populates="chunks"
+    )
+    source_node: Mapped["DocumentNodeORM"] = relationship("DocumentNodeORM")

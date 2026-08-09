@@ -4,7 +4,7 @@ parsing.
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
@@ -72,6 +72,7 @@ class StructuredNode:
     sequence: int = 0
     path: str = ""
     children: list["StructuredNode"] = field(default_factory=list)
+    id: UUID = field(default_factory=uuid4)
 
 
 class ValidationReport(BaseModel):

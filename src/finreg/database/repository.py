@@ -12,6 +12,7 @@ from finreg.database.models import (
     DocumentORM,
     DocumentVersionORM,
     RegulationORM,
+    RetrievalChunkORM,
 )
 from finreg.documents.models import StructuredNode
 from finreg.ingestion.models import DocumentReference, RegulationMetadata
@@ -273,3 +274,72 @@ class IngestionRepository:
                     nodes=node.children,
                     created_list=created_list,
                 )
+
+    def get_retrieval_chunks(self, document_id: UUID) -> list[RetrievalChunkORM]:
+        """Fetch all RetrievalChunkORM instances for a given document_id ordered by sequence."""
+        stmt = (
+            select(RetrievalChunkORM)
+            .where(RetrievalChunkORM.document_id == document_id)
+            .order_by(RetrievalChunkORM.sequence)
+        )
+        return list(self.session.scalars(stmt))
+
+    def replace_retrieval_chunks(
+        self,
+        document_id: UUID,
+        document_version_id: UUID,
+        chunks: list,
+    ) -> list[RetrievalChunkORM]:
+        """Atomically delete existing chunks for document_id and insert new retrieval chunk set."""
+        version = self.session.get(DocumentVersionORM, document_version_id)
+        if not version or version.document_id != document_id:
+            raise ValueError(
+                f"DocumentVersion {document_version_id} does not belong to Document {document_id}"
+            )
+
+        self.session.execute(
+            delete(RetrievalChunkORM).where(RetrievalChunkORM.document_id == document_id)
+        )
+        self.session.flush()
+
+        created_chunks: list[RetrievalChunkORM] = []
+        for chunk in chunks:
+            orm_chunk = RetrievalChunkORM(
+                id=chunk.id,
+                document_id=document_id,
+                document_version_id=document_version_id,
+                source_node_id=chunk.source_node_id,
+                chunk_hash=chunk.chunk_hash,
+                source=chunk.source,
+                regulation_type=chunk.regulation_type,
+                regulation_number=chunk.regulation_number,
+                title=chunk.title,
+                chapter_title=chunk.chapter_title,
+                part_title=chunk.part_title,
+                section_title=chunk.section_title,
+                article_number=chunk.article_number,
+                paragraph_number=chunk.paragraph_number,
+                letter_code=chunk.letter_code,
+                numbered_item=chunk.numbered_item,
+                part_index=chunk.part_index,
+                total_parts=chunk.total_parts,
+                structural_path=chunk.structural_path,
+                chunk_text=chunk.chunk_text,
+                contextual_text=chunk.contextual_text,
+                character_count=chunk.character_count,
+                word_count=chunk.word_count,
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                sequence=chunk.sequence,
+            )
+            self.session.add(orm_chunk)
+            created_chunks.append(orm_chunk)
+
+        self.session.flush()
+        logger.info(
+            "Replaced %d retrieval chunks for Document %s (Version: %s)",
+            len(created_chunks),
+            document_id,
+            document_version_id,
+        )
+        return created_chunks
