@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = Field(default=None, description="Embedding API key")
     embedding_dimension: int = Field(default=1536, description="Target embedding dimension")
 
+    # Neural Reranker Settings (Phase 5)
+    reranker_model_name: str = Field(
+        default="BAAI/bge-reranker-v2-m3",
+        description="Neural Cross-Encoder reranker model identifier",
+    )
+
     @field_validator("embedding_dimension")
     @classmethod
     def validate_embedding_dimension(cls, v: int) -> int:
