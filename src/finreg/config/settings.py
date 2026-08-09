@@ -64,11 +64,21 @@ class Settings(BaseSettings):
     vector_dimension: int = Field(default=1536, description="Embedding vector dimension")
     vector_distance_metric: str = Field(default="cosine", description="Vector distance metric")
 
-    # LLM Provider Settings (Anticipated for Future Phases)
+    # LLM & Grounded Answer Generation Settings (Phase 6)
     llm_provider: str = Field(default="openai", description="LLM provider name")
     llm_model: str = Field(default="gpt-4o-mini", description="LLM model identifier")
     llm_api_key: str | None = Field(default=None, description="LLM provider API key")
     llm_base_url: str | None = Field(default=None, description="LLM provider base URL endpoint")
+    llm_temperature: float = Field(default=0.0, description="LLM sampling temperature")
+    llm_max_output_tokens: int = Field(
+        default=1000, description="Maximum output tokens for RAG answer generation"
+    )
+    rag_max_context_tokens: int = Field(
+        default=4000, description="Maximum context token budget for RAG prompt assembly"
+    )
+    rag_min_rerank_threshold: float = Field(
+        default=0.1, description="Early quality gate threshold for neural rerank scores"
+    )
 
     # Embedding Provider Settings (Anticipated for Future Phases)
     embedding_provider: str = Field(default="openai", description="Embedding provider name")
