@@ -3,10 +3,11 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PostgreSQL 16+](https://img.shields.io/badge/PostgreSQL-16%2B%20%7C%20pgvector-blue)](https://github.com/pgvector/pgvector)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Production%20API-green.svg)](https://fastapi.tiangolo.com/)
+[![Docker Multi-Stage](https://img.shields.io/badge/Docker-Multi--Stage%20Non--Root-blue.svg)](Dockerfile)
 
 Platform Retrieval-Augmented Generation (RAG) tingkat produksi yang dirancang khusus untuk menganalisis dan menjawab kueri peraturan keuangan Indonesia dari **Bank Indonesia (BI)** dan **Otoritas Jasa Keuangan (OJK)**.
 
-Sistem ini menggabungkan **parser hirarki hukum berbasis state-machine**, **pencarian hibrida HNSW vector + BM25 lexical**, **neural cross-encoder reranking**, dan **penjawab berbasis bukti hukum dengan validasi sitasi deterministik dan penghentian otomatis (abstention)**.
+Sistem ini menggabungkan **parser hirarki hukum berbasis state-machine**, **pencarian hibrida HNSW vector + BM25 lexical**, **neural cross-encoder reranking**, **penjawab berbasis bukti hukum dengan validasi sitasi deterministik**, dan **fondasi kontainerisasi serta CI/CD tingkat produksi**.
 
 ---
 
@@ -20,8 +21,8 @@ Sistem ini menggabungkan **parser hirarki hukum berbasis state-machine**, **penc
    - Integrasi model Cross-Encoder (`BAAI/bge-reranker-v2-m3`) dari HuggingFace untuk menyaring presisi semantik kandidat sebelum pembuatan konteks LLM.
 4. **Validasi Sitasi Deterministik & Garansi Abstain**:
    - Evaluasi sitasi inline `[C1]` berbasis regex deterministik dan penghentian jawaban otomatis jika skor relevansi berada di bawah ambang batas (0.30).
-5. **Layanan REST API FastAPI**:
-   - Dilengkapi pelacakan kueri (`X-Request-ID`), penanganan error terstruktur, serta pemisahan proses `/health` dan basis data `/readiness`.
+5. **Fondasi Kontainerisasi & Operasional**:
+   - `Dockerfile` multi-stage non-root (`appuser` UID 10001), `docker-compose.yml` multi-kontainer, workflow CI GitHub Actions, metrik Prometheus (`GET /metrics`), pelacakan kueri (`X-Request-ID`), dan pemeriksaan kesehatan `/health` vs `/readiness`.
 6. **Framework Evaluasi Kanonikal**:
    - Evaluasi multi-tahap (MRR, HitRate, nDCG, Precision, Recall, Citation Validity, Abstention Accuracy) dengan normalisasi jalur kanonikal.
 
@@ -43,21 +44,20 @@ Analisis mendalam mengenai hasil evaluasi dan analisis kegagalan dapat dilihat d
 ## 🛠 Panduan Instalasi Singkat
 
 ```bash
-# Kloning Repositori
+# Kloning Repositori & Jalankan Docker Compose
 git clone https://github.com/ilfijandrisno/finreg-intelligence-rag.git
 cd finreg-intelligence-rag
+docker compose up -d --build
 
-# Jalankan Container PostgreSQL & pgvector
-docker-compose up -d
+# Uji Probe Liveness & Readiness
+curl http://localhost:8000/health
+curl http://localhost:8000/readiness
 
-# Migrasi Basis Data
-alembic upgrade head
+# Ambil Metrik Prometheus
+curl http://localhost:8000/metrics
 
 # Jalankan Pengujian Suite Pytest
 pytest
-
-# Jalankan Server FastAPI
-uvicorn finreg.api.main:app --reload --port 8000
 ```
 
 ---
@@ -67,5 +67,6 @@ uvicorn finreg.api.main:app --reload --port 8000
 - [Arsitektur & Alur Data](docs/architecture.id.md)
 - [Skema Basis Data & Model Data](docs/data-model.id.md)
 - [Panduan Pengembang & Setup](docs/development.id.md)
+- [Kesiapan Kontainerisasi & Observabilitas Fase 10](docs/deployment-readiness.md)
 - [Laporan Evaluasi & Analisis Failure](docs/eval-report.md)
 - [English Version / Versi Bahasa Inggris](README.md)

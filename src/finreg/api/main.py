@@ -16,10 +16,12 @@ from finreg.api.middleware import (
     validation_exception_handler,
 )
 from finreg.api.routers.health import router as health_router
+from finreg.api.routers.metrics import router as metrics_router
 from finreg.api.routers.rag import router as rag_router
 from finreg.api.routers.retrieval import router as retrieval_router
 from finreg.config.settings import get_settings
 from finreg.observability.logging import setup_logging
+from finreg.observability.metrics import PrometheusMetricsMiddleware
 
 logger = setup_logging()
 
@@ -56,7 +58,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Add Request Tracing Middleware (X-Request-ID propagation)
+# 2. Add Request Tracing & Prometheus Metrics Middleware
+app.add_middleware(PrometheusMetricsMiddleware)
 app.add_middleware(RequestTracingMiddleware)
 
 # 3. Register Custom Exception Handlers
@@ -66,5 +69,6 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 # 4. Register API Routers
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(rag_router)
 app.include_router(retrieval_router)

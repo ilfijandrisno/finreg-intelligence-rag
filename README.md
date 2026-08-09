@@ -4,11 +4,12 @@
 [![PostgreSQL 16+](https://img.shields.io/badge/PostgreSQL-16%2B%20%7C%20pgvector-blue)](https://github.com/pgvector/pgvector)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Production%20API-green.svg)](https://fastapi.tiangolo.com/)
 [![Ruff / Mypy Clean](https://img.shields.io/badge/Code%20Quality-Ruff%20%7C%20Mypy%20Strict-brightgreen)](https://github.com/astral-sh/ruff)
+[![Docker Multi-Stage](https://img.shields.io/badge/Docker-Multi--Stage%20Non--Root-blue.svg)](Dockerfile)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An enterprise-grade, production-oriented Retrieval-Augmented Generation (RAG) platform engineered specifically for complex Indonesian financial regulations issued by **Bank Indonesia (BI)** and the **Financial Services Authority (OJK)**.
 
-The system combines **hierarchical legal state-machine parsing**, **hybrid HNSW vector + BM25 lexical search**, **neural cross-encoder reranking**, and **grounded generation with strict citation validation and explicit abstention safeguards**.
+The system combines **hierarchical legal state-machine parsing**, **hybrid HNSW vector + BM25 lexical search**, **neural cross-encoder reranking**, **grounded generation with strict citation validation**, and a **containerized, CI-validated operational foundation**.
 
 ---
 
@@ -22,8 +23,8 @@ The system combines **hierarchical legal state-machine parsing**, **hybrid HNSW 
    - Integrates `BAAI/bge-reranker-v2-m3` via HuggingFace CrossEncoder to score candidate precision before LLM context assembly.
 4. **Deterministic Grounding & Abstention Safeguards**:
    - Replaces non-deterministic LLM-as-a-judge approaches with deterministic regex citation parsing (`[C1]`), token budgeting, context leak prevention, prompt injection defenses, legal conflict handling, and early score-threshold abstention.
-5. **FastAPI Production RAG Service**:
-   - Includes request tracing (`X-Request-ID`), structured error contracts, and separated process `/health` vs PostgreSQL database `/readiness` endpoints.
+5. **Production Operational & Container Foundation**:
+   - Multi-stage non-root `Dockerfile` (`python:3.11-slim`, `appuser` UID 10001), multi-container `docker-compose.yml`, GitHub Actions CI workflow, Prometheus metrics (`GET /metrics`), request tracing (`X-Request-ID`), and backward-compatible process `/health` vs PostgreSQL database `/readiness` checks.
 6. **Auditable Evaluation Benchmark**:
    - Custom evaluation engine supporting MRR@K, HitRate@K, graded nDCG@K, Precision/Recall, Citation Validity, and Abstention Accuracy with evaluation-layer canonical path normalization.
 
@@ -61,6 +62,13 @@ flowchart TD
         Gate -- Yes --> LLM["LLM Provider (gpt-4o-mini / Mock)"]
         LLM --> CitVal["Regex Citation Validator ([C1])"]
         CitVal --> API["FastAPI Endpoint (/api/v1/rag/query)"]
+    end
+
+    subgraph Operations["Phase 10: Operations & Observability"]
+        API --> Tracing["RequestTracingMiddleware (X-Request-ID)"]
+        API --> Metrics["PrometheusMetricsMiddleware (GET /metrics)"]
+        API --> Health["Process Liveness (GET /health)"]
+        API --> Ready["Database Readiness (GET /readiness)"]
     end
 ```
 
@@ -102,29 +110,33 @@ Full benchmark breakdowns, canonical identity traces, and failure analysis are d
 
 ---
 
-## 🛠 Local Setup & Reproducibility
+## 🛠 Local Setup, Docker & Reproducibility
 
-### 1. Requirements & PostgreSQL Container
+### 1. Requirements & Docker Compose Execution
 ```bash
 # Clone Repository
 git clone https://github.com/ilfijandrisno/finreg-intelligence-rag.git
 cd finreg-intelligence-rag
 
-# Start PostgreSQL 16 + pgvector container
-docker-compose up -d
-
-# Create Virtual Environment & Install Dependencies
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .\.venv\Scripts\Activate.ps1
-pip install -e .[dev]
-
-# Run Alembic Database Migrations
-alembic upgrade head
+# Start PostgreSQL 16 + pgvector & FastAPI Container Stack
+docker compose up -d --build
 ```
 
-### 2. Verify System
+### 2. Operational Probes & Metrics
 ```bash
-# Run 103 Unit & Integration Tests
+# Check Liveness Probe (HTTP 200)
+curl http://localhost:8000/health
+
+# Check Database Readiness Probe (HTTP 200 / 503)
+curl http://localhost:8000/readiness
+
+# Scrape Prometheus Metrics (HTTP 200)
+curl http://localhost:8000/metrics
+```
+
+### 3. Verify Code Quality & Offline Tests
+```bash
+# Run Pytest Suite inside Container (or local venv)
 pytest
 
 # Run Code Quality Checks
@@ -135,11 +147,6 @@ mypy src
 python -m finreg.evaluation.cli --dataset-path data/evaluation/benchmark_gold_dataset.json --output-dir data/evaluation/reports
 ```
 
-### 3. Launch FastAPI Server
-```bash
-uvicorn finreg.api.main:app --reload --port 8000
-```
-
 ---
 
 ## 📚 Documentation Index
@@ -147,6 +154,7 @@ uvicorn finreg.api.main:app --reload --port 8000
 - [Architecture & Data Flow](docs/architecture.md)
 - [Database Schema & Data Model](docs/data-model.md)
 - [Developer Setup & CLI Guide](docs/development.md)
+- [Phase 10 Containerization & Deployment Readiness](docs/deployment-readiness.md)
 - [Evaluation Report & Failure Analysis](docs/eval-report.md)
 - [ADR 001: Hybrid RRF Retrieval](docs/adr/001-hybrid-rrf-retrieval.md)
 - [ADR 002: Deterministic Grounding & Abstention](docs/adr/002-deterministic-grounding.md)

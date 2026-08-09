@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,7 +59,7 @@ class Settings(BaseSettings):
         description="Minimum acceptable character coverage ratio for structure parsing",
     )
 
-    # Vector Database Settings (Anticipated for Future Phases)
+    # Vector Database Settings (Phase 4A)
     vector_table: str = Field(default="chunk_embeddings", description="Vector database table name")
     vector_dimension: int = Field(default=1536, description="Embedding vector dimension")
     vector_distance_metric: str = Field(default="cosine", description="Vector distance metric")
@@ -80,7 +80,7 @@ class Settings(BaseSettings):
         default=0.1, description="Early quality gate threshold for neural rerank scores"
     )
 
-    # Embedding Provider Settings (Anticipated for Future Phases)
+    # Embedding Provider Settings (Phase 4A)
     embedding_provider: str = Field(default="openai", description="Embedding provider name")
     embedding_model: str = Field(
         default="text-embedding-3-small", description="Embedding model identifier"
@@ -100,6 +100,16 @@ class Settings(BaseSettings):
         if v <= 0:
             raise ValueError("embedding_dimension must be a positive integer > 0")
         return v
+
+    @model_validator(mode="after")
+    def validate_production_api_keys(self) -> "Settings":
+        """Fail fast in production environment if required production API keys are missing."""
+        if self.environment.lower() == "production":
+            if not self.llm_api_key:
+                raise ValueError("llm_api_key is required when ENVIRONMENT is 'production'")
+            if not self.embedding_api_key:
+                raise ValueError("embedding_api_key is required when ENVIRONMENT is 'production'")
+        return self
 
     @property
     def database_url(self) -> str:
