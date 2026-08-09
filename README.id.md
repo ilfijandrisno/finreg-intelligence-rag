@@ -222,14 +222,15 @@ Untuk instruksi penyiapan lebih lengkap, lihat [`docs/development.id.md`](docs/d
 | Entitas Domain Murni & Value Objects | **Terimplementasi** | `Regulation`, `Document`, `Section`, `Chunk`, `Citation` |
 | Protokol Penyedia AI Independen Vendor | **Terimplementasi** | `DocumentLoader`, `DocumentParser`, `EmbeddingProvider`, `Retriever`, `Reranker`, `LLMProvider` |
 | Infrastruktur PostgreSQL 16 + pgvector | **Terimplementasi** | Kontainer Docker Compose & migrasi Alembic |
-| Adapter Sumber Ingesti | **Terimplementasi (Fase 2)** | `BankIndonesiaAdapter` (PBI) & `OjkAdapter` (POJK) |
+| Adapter Sumber | **Terimplementasi (Fase 2)** | `BankIndonesiaAdapter` (PBI) & `OjkAdapter` (POJK) |
 | Downloader & Penyimpanan Berkas Mentah | **Terimplementasi (Fase 2)** | Downloader HTTP terisi batas laju, retries backoff, checksum SHA-256, penyimpanan mentah |
 | Skema ORM Registri Ingesti | **Terimplementasi (Fase 2)** | `regulations`, `documents`, `document_versions` dengan indeks unik parsial `uq_document_versions_current` |
 | Orkestrator Ingesti & CLI | **Terimplementasi (Fase 2)** | `IngestionService` dan CLI (`python -m finreg.ingestion.cli`) |
 | Suite Pengujian & Smoke Test | **Terimplementasi (Fase 2)** | Pengujian unit berbasis fixture, pengujian integrasi DB terisolasi, `smoke_test_ingestion.py` |
+| Parsing Struktur PDF Regulasi | **Terimplementasi (Fase 3A)** | `PdfExtractor`, `TextNormalizer`, `RegulatoryStructureParser`, `StructureValidator`, `document_nodes` |
+| CLI & Suite Pengujian Parsing | **Terimplementasi (Fase 3A)** | `python -m finreg.documents.cli`, rasio cakupan tanpa penumpukan, integritas FK komposit |
 | Aplikasi FastAPI & `GET /health` | **Terimplementasi** | Endpoint telemetri kesehatan layanan |
-| Pemrosesan Dokumen Bab/Pasal/Ayat | *Direncanakan (Fase 3)* | Ekstraksi struktur dan pemotongan chunk token |
-| Indeksasi Vektor & Pencarian Hibrida | *Direncanakan (Fase 3)* | Generasi embedding dan pencarian hibrida `pgvector` |
+| Indeksasi Vektor & Pencarian Hibrida | *Direncanakan (Fase 3B)* | Generasi embedding, indeksasi `pgvector`, dan pencarian sparse BM25 |
 | Reranking & Generasi Tergounding LLM | *Direncanakan (Fase 4)* | Reranking dan format sitasi |
 | Evaluasi Otomatis Triad RAG | *Direncanakan (Fase 5)* | Metrik kesetiaan dan relevansi |
 

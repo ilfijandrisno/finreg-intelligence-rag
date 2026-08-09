@@ -67,14 +67,18 @@ class BankIndonesiaAdapter:
             if "/peraturan/" not in href.lower() or href.endswith(".pdf"):
                 continue
 
+            if href.lower().endswith("/default.aspx") or href.lower().endswith("/peraturan/"):
+                continue
+
             detail_url = build_absolute_url(base_url, href)
             if detail_url in seen_urls:
                 continue
-            seen_urls.add(detail_url)
 
             title = link_tag.get_text(strip=True)
             if not title or len(title) < 5:
                 continue
+
+            seen_urls.add(detail_url)
 
             # Extract PBI number (e.g. 23/13/PBI/2021 or No. 24/1/PBI/2022)
             num_match = re.search(r"(\d+/\d+/PBI/\d{4}|\d+/PBI/\d{4})", title, re.IGNORECASE)

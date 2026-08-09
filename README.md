@@ -227,9 +227,10 @@ For detailed onboarding instructions, see [`docs/development.md`](docs/developme
 | Ingestion Registry ORM Schema | **Implemented (Phase 2)** | `regulations`, `documents`, `document_versions` with partial unique index `uq_document_versions_current` |
 | Ingestion Orchestrator & CLI | **Implemented (Phase 2)** | `IngestionService` and CLI (`python -m finreg.ingestion.cli`) |
 | Ingestion Test Suite & Live Smoke Test | **Implemented (Phase 2)** | Fixture-based unit tests, isolated DB integration tests, `smoke_test_ingestion.py` |
+| Regulatory PDF Structure Parsing | **Implemented (Phase 3A)** | `PdfExtractor`, `TextNormalizer`, `RegulatoryStructureParser`, `StructureValidator`, `document_nodes` |
+| Document Parsing CLI & Test Suite | **Implemented (Phase 3A)** | `python -m finreg.documents.cli`, non-overlapping coverage ratio, composite FK integrity |
 | FastAPI Application & `GET /health` | **Implemented** | Lightweight service health telemetry endpoint |
-| Document Parsing into Bab/Pasal/Ayat | *Planned (Phase 3)* | Structure extraction and token chunking |
-| Vector Indexing & Hybrid Retrieval | *Planned (Phase 3)* | Embedding generation and `pgvector` hybrid search |
+| Vector Indexing & Hybrid Retrieval | *Planned (Phase 3B)* | Embedding generation, `pgvector` indexing, and BM25 sparse search |
 | Reranking & LLM Grounded Generation | *Planned (Phase 4)* | Reranking and citation formatting |
 | RAG Triad Automated Evaluation | *Planned (Phase 5)* | Faithfulness and relevance metrics |
 

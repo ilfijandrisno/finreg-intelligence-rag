@@ -4,10 +4,16 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from finreg.database.models import DocumentORM, DocumentVersionORM, RegulationORM
+from finreg.database.models import (
+    DocumentNodeORM,
+    DocumentORM,
+    DocumentVersionORM,
+    RegulationORM,
+)
+from finreg.documents.models import StructuredNode
 from finreg.ingestion.models import DocumentReference, RegulationMetadata
 
 logger = logging.getLogger(__name__)
@@ -176,3 +182,94 @@ class IngestionRepository:
             sha256[:12],
         )
         return new_version, True
+
+    def get_current_document_version(self, document_id: UUID) -> DocumentVersionORM | None:
+        """Fetch active version record (is_current=True) for a given document_id."""
+        stmt = select(DocumentVersionORM).where(
+            DocumentVersionORM.document_id == document_id,
+            DocumentVersionORM.is_current.is_(True),
+        )
+        return self.session.scalar(stmt)
+
+    def get_document_nodes(self, document_id: UUID) -> list[DocumentNodeORM]:
+        """Fetch all DocumentNodeORM instances for a given document_id ordered by sequence."""
+        stmt = (
+            select(DocumentNodeORM)
+            .where(DocumentNodeORM.document_id == document_id)
+            .order_by(DocumentNodeORM.sequence)
+        )
+        return list(self.session.scalars(stmt))
+
+    def replace_document_nodes(
+        self,
+        document_id: UUID,
+        document_version_id: UUID,
+        nodes: list[StructuredNode],
+    ) -> list[DocumentNodeORM]:
+        """Atomically delete existing nodes for document_id and insert new structured node tree.
+
+        Validates version.document_id == document_id before persistence.
+        """
+        version = self.session.get(DocumentVersionORM, document_version_id)
+        if not version or version.document_id != document_id:
+            raise ValueError(
+                f"DocumentVersion {document_version_id} does not belong to Document {document_id}"
+            )
+
+        self.session.execute(
+            delete(DocumentNodeORM).where(DocumentNodeORM.document_id == document_id)
+        )
+        self.session.flush()
+
+        created_nodes: list[DocumentNodeORM] = []
+        self._insert_node_tree_recursive(
+            document_id=document_id,
+            document_version_id=document_version_id,
+            parent_id=None,
+            nodes=nodes,
+            created_list=created_nodes,
+        )
+        self.session.flush()
+        logger.info(
+            "Replaced %d document nodes for Document %s (Version: %s)",
+            len(created_nodes),
+            document_id,
+            document_version_id,
+        )
+        return created_nodes
+
+    def _insert_node_tree_recursive(
+        self,
+        document_id: UUID,
+        document_version_id: UUID,
+        parent_id: UUID | None,
+        nodes: list[StructuredNode],
+        created_list: list[DocumentNodeORM],
+    ) -> None:
+        """Recursively insert structured node dataclasses into DocumentNodeORM table."""
+        for node in nodes:
+            orm_node = DocumentNodeORM(
+                document_id=document_id,
+                document_version_id=document_version_id,
+                parent_id=parent_id,
+                node_type=node.node_type.value,
+                node_number=node.node_number,
+                title=node.title,
+                text=node.text or "",
+                page_start=node.page_start,
+                page_end=node.page_end,
+                sequence=node.sequence,
+                path=node.path,
+            )
+            self.session.add(orm_node)
+            self.session.flush()
+            created_list.append(orm_node)
+
+            if node.children:
+                self._insert_node_tree_recursive(
+                    document_id=document_id,
+                    document_version_id=document_version_id,
+                    parent_id=orm_node.id,
+                    nodes=node.children,
+                    created_list=created_list,
+                )

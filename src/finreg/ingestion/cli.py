@@ -5,6 +5,7 @@ import argparse
 from finreg.config.settings import get_settings
 from finreg.ingestion.adapters.bi_adapter import BankIndonesiaAdapter
 from finreg.ingestion.adapters.ojk_adapter import OjkAdapter
+from finreg.ingestion.protocols import RegulatorySourceAdapter
 from finreg.ingestion.service import IngestionService
 from finreg.observability.logging import setup_logging
 
@@ -19,28 +20,25 @@ def main() -> None:
     parser.add_argument(
         "--source",
         choices=["bi", "ojk", "all"],
-        required=True,
-        help="Target regulatory source authority ('bi', 'ojk', or 'all')",
+        default="all",
+        help="Target regulatory data source adapter to ingest (bi, ojk, or all)",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=get_settings().max_discovered_documents,
-        help="Maximum number of regulations to discover per source",
+        help="Maximum document count limit to discover",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help=(
-            "Execute discovery and metadata resolution without downloading "
-            "files or mutating database"
-        ),
+        help="Execute discovery without downloading PDFs or writing to database",
     )
 
     args = parser.parse_args()
 
     service = IngestionService()
-    adapters = []
+    adapters: list[RegulatorySourceAdapter] = []
 
     if args.source in ("bi", "all"):
         adapters.append(BankIndonesiaAdapter())

@@ -24,6 +24,25 @@ def test_bi_adapter_listing_parsing() -> None:
     assert "https://www.bi.go.id/id/publikasi/peraturan/Pages/PBI_231321.aspx" in refs[0].detail_url
 
 
+def test_bi_adapter_skips_default_aspx_listing_link() -> None:
+    """Verify BI parse_listing_html ignores self-referencing listing/index URLs (Default.aspx)."""
+    html_content = """
+    <html>
+      <body>
+        <a href="/id/publikasi/peraturan/Default.aspx">Peraturan</a>
+        <a href="/id/publikasi/peraturan/Pages/PADG_202026.aspx">PADG No. 20/2026</a>
+      </body>
+    </html>
+    """
+    adapter = BankIndonesiaAdapter()
+    refs = adapter.parse_listing_html(html_content, base_url="https://www.bi.go.id")
+
+    assert len(refs) == 1
+    assert (
+        refs[0].detail_url == "https://www.bi.go.id/id/publikasi/peraturan/Pages/PADG_202026.aspx"
+    )
+
+
 def test_bi_adapter_detail_parsing() -> None:
     """Verify BI detail HTML parsing extracts metadata and PDF document references."""
     detail_path = FIXTURES_DIR / "bi_pbi_detail.html"

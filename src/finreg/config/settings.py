@@ -53,6 +53,12 @@ class Settings(BaseSettings):
         default="data/metadata", description="Root directory path for JSON metadata storage"
     )
 
+    # Document Parsing Engine Settings (Phase 3A)
+    parsing_min_coverage_ratio: float = Field(
+        default=0.90,
+        description="Minimum acceptable character coverage ratio for structure parsing",
+    )
+
     # Vector Database Settings (Anticipated for Future Phases)
     vector_table: str = Field(default="chunk_embeddings", description="Vector database table name")
     vector_dimension: int = Field(default=1536, description="Embedding vector dimension")

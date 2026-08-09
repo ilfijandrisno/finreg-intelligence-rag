@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -109,6 +110,7 @@ class DocumentVersionORM(Base):
     __tablename__ = "document_versions"
     __table_args__ = (
         UniqueConstraint("document_id", "sha256", name="uq_document_versions_doc_sha256"),
+        UniqueConstraint("document_id", "id", name="uq_document_versions_doc_id"),
         Index("idx_document_versions_sha256", "sha256"),
     )
 
@@ -128,3 +130,51 @@ class DocumentVersionORM(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     document: Mapped["DocumentORM"] = relationship("DocumentORM", back_populates="versions")
+    nodes: Mapped[list["DocumentNodeORM"]] = relationship(
+        "DocumentNodeORM", back_populates="document_version", cascade="all, delete-orphan"
+    )
+
+
+class DocumentNodeORM(Base):
+    """PostgreSQL ORM model for hierarchical document node trees."""
+
+    __tablename__ = "document_nodes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["document_id", "document_version_id"],
+            ["document_versions.document_id", "document_versions.id"],
+            ondelete="CASCADE",
+            name="fk_document_nodes_doc_version",
+        ),
+        Index("idx_document_nodes_doc_ver", "document_id", "document_version_id"),
+        Index("idx_document_nodes_doc_seq", "document_id", "sequence"),
+        Index("idx_document_nodes_parent", "parent_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(nullable=False)
+    parent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("document_nodes.id", ondelete="CASCADE"), nullable=True
+    )
+    node_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    node_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    page_start: Mapped[int] = mapped_column(nullable=False)
+    page_end: Mapped[int] = mapped_column(nullable=False)
+    sequence: Mapped[int] = mapped_column(nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    document_version: Mapped["DocumentVersionORM"] = relationship(
+        "DocumentVersionORM", back_populates="nodes"
+    )
+    parent: Mapped["DocumentNodeORM | None"] = relationship(
+        "DocumentNodeORM", remote_side=lambda: [DocumentNodeORM.id], back_populates="children"
+    )
+    children: Mapped[list["DocumentNodeORM"]] = relationship(
+        "DocumentNodeORM", back_populates="parent", cascade="all, delete-orphan"
+    )
