@@ -1,1 +1,1 @@
-"""Evaluation package for RAG assessment and metrics."""
+"""Evaluation package for FinReg Intelligence RAG platform."""
