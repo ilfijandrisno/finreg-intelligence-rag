@@ -1,10 +1,12 @@
-# FinReg Intelligence RAG: Arsitektur Sistem & Alur Data
+# FinReg Intelligence RAG: Arsitektur Sistem & Aliran Data
+
+**Bahasa:** 🇮🇩 Bahasa Indonesia · [🇬🇧 English](architecture.md)
 
 ## 1. Ringkasan Sistem
 
-FinReg Intelligence RAG adalah platform legal technology tingkat produksi yang dirancang untuk otomasi ingestasi, indeksasi hibrida, reranking, dan pencarian jawaban berbasis bukti hukum (*grounded QA*) atas peraturan keuangan Indonesia yang diterbitkan oleh Bank Indonesia (BI) dan Otoritas Jasa Keuangan (OJK).
+FinReg Intelligence RAG adalah platform legal technology berorientasi produksi yang dirancang untuk ingestion otomatis, hybrid indexing, reranking, dan question answering berbasis grounding atas peraturan keuangan Indonesia yang diterbitkan oleh Bank Indonesia (BI) dan Otoritas Jasa Keuangan (OJK).
 
-Platform ini menjamin provensi hukum yang ketat, sitasi inline yang terverifikasi, isolasi konteks, dan mekanisme *abstention* otomatis berbasis ambang batas skor.
+Platform ini menerapkan provenance hukum yang ketat, sitasi inline yang dapat diverifikasi, isolasi batas konteks, serta safeguards abstention eksplisit berbasis ambang skor.
 
 ---
 
@@ -12,43 +14,133 @@ Platform ini menjamin provensi hukum yang ketat, sitasi inline yang terverifikas
 
 ```mermaid
 flowchart TD
-    subgraph Ingestion["Fase 2 & 3: Ingestasi & Pemrosesan Dokumen"]
-        PDF["PDF Peraturan Mentah"] --> Extractor["PyMuPDF Reader"]
-        Extractor --> Normalizer["Pembersih & Normalisasi Teks"]
-        Parser --> Tree["Pohon Dokumen Hirarkis (Node)"]
+    subgraph Ingestion["Fase 2 & 3: Pipeline Ingestion & Dokumen"]
+        PDF["PDF Regulasi Mentah"] --> Extractor["PyMuPDF Reader"]
+        Extractor --> Normalizer["Text Normalizer & Cleaner"]
         Normalizer --> Parser["Context-Aware State-Machine Parser"]
-        Tree --> Chunker["Semantic Legal Chunker (Max 1500 karakter)"]
+        Parser --> Tree["Pohon Dokumen Hirarkis (Nodes)"]
+        Tree --> Chunker["Semantic Legal Chunker (Maks. 1500 karakter)"]
         Chunker --> DB_Chunks[("PostgreSQL: retrieval_chunks")]
     end
 
-    subgraph Indexing["Fase 4: Indeksasi Vektor Hibrida"]
-        DB_Chunks --> HNSW["Indeks Vektor HNSW (cosine)"]
-        DB_Chunks --> GIN["Indeks Teks Lengkap GIN (tsvector)"]
+    subgraph Indexing["Fase 4: Multi-Vector Indexing"]
+        DB_Chunks --> HNSW["HNSW Vector Index (cosine)"]
+        DB_Chunks --> GIN["Full-Text Search GIN Index (tsvector)"]
     end
 
-    subgraph Retrieval["Fase 4 & 5: Pencarian Hibrida Multi-Tahap"]
+    subgraph Retrieval["Fase 4 & 5: Multi-Stage Hybrid Search"]
         UserQuery["Kueri Pengguna"] --> VectorSearch["VectorSearchService (HNSW)"]
         UserQuery --> LexicalSearch["LexicalSearchService (tsvector)"]
-        VectorSearch --> RRF["Penggabungan Hybrid RRF (k=60)"]
+        VectorSearch --> RRF["Hybrid RRF Fusion (k=60)"]
         LexicalSearch --> RRF
         RRF --> Reranker["RerankingService (BAAI/bge-reranker-v2-m3)"]
     end
 
-    subgraph Generation["Fase 6 & 7: RAG Terverifikasi & FastAPI"]
-        Reranker --> Gate{"Skor Tertinggi >= Ambang Batas (0.30)?"}
-        Gate -- Tidak --> Abstain["Jawaban Abstain (Kosong)"]
-        Gate -- Ya --> PromptBuilder["Isolasi Konteks & Asamblesi Prompt"]
+    subgraph Generation["Fase 6 & 7: Grounded RAG & FastAPI"]
+        Reranker --> Gate{"Top Score >= Threshold (0.30)?"}
+        Gate -- Tidak --> Abstain["Abstain Response (Jawaban Kosong)"]
+        Gate -- Ya --> PromptBuilder["Prompt Assembler & Context Isolation"]
         PromptBuilder --> LLM["LLM Provider (gpt-4o-mini / Mock)"]
-        LLM --> CitVal["Validator Sitasi (Regex [C1])"]
+        LLM --> CitVal["Citation Validator (Regex [C1])"]
         CitVal --> FastApi["FastAPI REST Endpoint (/api/v1/rag/query)"]
     end
 ```
 
 ---
 
-## 3. Komponen Utama
+## 3. Sequence Hybrid Retrieval Multi-Tahap & Reranking
 
-- **Parser Struktur Hukum**: Parser berbasis *state-machine* kontekstual yang mengekstrak hirarki hukum (`BAB`, `Pasal`, `Ayat`, `Huruf`, `Angka`).
-- **Pencarian Hibrida RRF**: Penggabungan HNSW vector search (`pgvector`) dan BM25 full-text search (`tsvector`) dengan Reciprocal Rank Fusion ($k=60$).
-- **Neural Reranking**: Model Cross-Encoder (`BAAI/bge-reranker-v2-m3`) untuk pemeringkatan ulang berbasis presisi semantik.
-- **RAG Terverifikasi & Abstention**: Evaluasi sitasi berbasis regex deterministik dan penghentian jawaban otomatis jika bukti tidak mencukupi.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as API Client
+    participant API as FastAPI Router
+    participant RAG as RAGService
+    participant Rerank as RerankingService
+    participant Hybrid as HybridRetrievalService
+    participant Vector as VectorSearchService
+    participant Lexical as LexicalSearchService
+    participant DB as PostgreSQL Database
+
+    Client->>API: POST /api/v1/rag/query { query }
+    API->>RAG: search_and_generate(query)
+    RAG->>Rerank: search(query, top_n=5, hybrid_top_k=20)
+    Rerank->>Hybrid: search(query, top_k=20)
+
+    par Dense Vector Search
+        Hybrid->>Vector: search(query, top_k=20)
+        Vector->>DB: Cosine Similarity Query (HNSW)
+        DB-->>Vector: Dense Vector Results
+    and Lexical Full-Text Search
+        Hybrid->>Lexical: search(query, top_k=20)
+        Lexical->>DB: tsvector Websearch Query (GIN)
+        DB-->>Lexical: BM25 Lexical Results
+    end
+
+    Vector-->>Hybrid: Dense Ranked List
+    Lexical-->>Hybrid: Lexical Ranked List
+    Hybrid->>Hybrid: Apply Reciprocal Rank Fusion (RRF k=60)
+    Hybrid-->>Rerank: Top-20 Hybrid Candidates
+
+    Rerank->>Rerank: BAAI/bge-reranker-v2-m3 Batch Scoring
+    Rerank-->>RAG: Top-5 Reranked Results
+
+    alt Top Score < Minimum Threshold (0.30)
+        RAG-->>API: Abstained GenerationResult
+        API-->>Client: HTTP 200 { abstained: true, answer: "" }
+    else Top Score >= Threshold
+        RAG->>RAG: Assemble Context Blocks & Call LLM
+        RAG->>RAG: Deterministic Regex Citation Validation ([C1])
+        RAG-->>API: Validated GenerationResult
+        API-->>Client: HTTP 200 { answer, citations, report }
+    end
+```
+
+---
+
+## 4. State Machine Enforcement Grounded RAG Fase 6
+
+```mermaid
+stateDiagram-v2
+    [*] --> QueryReceived: User Query Input
+    QueryReceived --> HybridRetrieval: Execute Phase 4C Hybrid RRF Search
+    HybridRetrieval --> NeuralReranking: Execute Phase 5 Cross-Encoder Rerank
+    NeuralReranking --> ThresholdCheck: Check Top Candidate Score
+
+    state ThresholdCheck {
+        [*] --> ScoreEvaluated
+        ScoreEvaluated --> InsufficientScore: Score < 0.30
+        ScoreEvaluated --> SufficientScore: Score >= 0.30
+    }
+
+    InsufficientScore --> AbstainOutput: Return Abstained Response (Safety Safeguard)
+    SufficientScore --> LLMGeneration: Prompt LLM with Sealed Context Blocks
+
+    LLMGeneration --> CitationValidation: Parse Inline Citations [C1]
+
+    state CitationValidation {
+        [*] --> RegexParsing
+        RegexParsing --> ProvenanceCheck: Validate Citation Context IDs
+        ProvenanceCheck --> ValidationPassed: All Tags Valid & Context Bound
+        ProvenanceCheck --> ValidationFailed: Invalid Tag or Citation Hallucination
+    }
+
+    ValidationFailed --> AbstainOutput: Suppress Answer & Abstain
+    ValidationPassed --> FinalOutput: Deliver Grounded Answer & Citations
+    AbstainOutput --> [*]
+    FinalOutput --> [*]
+```
+
+---
+
+## 5. Ringkasan Technology Stack
+
+- **Bahasa Utama**: Python 3.11+
+- **Ekstraksi PDF**: PyMuPDF (`fitz`)
+- **Parser Engine**: Custom Regex Context-Aware State-Machine Parser
+- **Database Layer**: PostgreSQL 16 + `pgvector`
+- **Vector Search Index**: HNSW (`vector_cosine_ops`, $m=16, ef\_construction=64$)
+- **Full-Text Index**: PostgreSQL `tsvector` GIN index (konfigurasi bahasa `indonesian`)
+- **Neural Reranker**: `BAAI/bge-reranker-v2-m3` melalui HuggingFace `sentence-transformers` CrossEncoder
+- **REST Framework**: FastAPI + Pydantic v2
+- **Testing & Quality**: Pytest, Ruff, Mypy

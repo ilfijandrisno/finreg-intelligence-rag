@@ -1,5 +1,7 @@
 # FinReg Intelligence RAG: Enterprise Indonesian Financial Regulatory RAG Platform
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](README.id.md)
+
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PostgreSQL 16+](https://img.shields.io/badge/PostgreSQL-16%2B%20%7C%20pgvector-blue)](https://github.com/pgvector/pgvector)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Production%20API-green.svg)](https://fastapi.tiangolo.com/)
@@ -154,11 +156,11 @@ python -m finreg.evaluation.cli --dataset-path data/evaluation/benchmark_gold_da
 - [Architecture & Data Flow](docs/architecture.md)
 - [Database Schema & Data Model](docs/data-model.md)
 - [Developer Setup & CLI Guide](docs/development.md)
-- [Phase 10 Containerization & Deployment Readiness](docs/deployment-readiness.md)
-- [Evaluation Report & Failure Analysis](docs/eval-report.md)
-- [ADR 001: Hybrid RRF Retrieval](docs/adr/001-hybrid-rrf-retrieval.md)
-- [ADR 002: Deterministic Grounding & Abstention](docs/adr/002-deterministic-grounding.md)
-- [ADR 003: Canonical Identity Normalization](docs/adr/003-canonical-eval-identity.md)
+- [Phase 10 Containerization & Deployment Readiness](docs/deployment-readiness.md) · [🇮🇩 ID](docs/deployment-readiness.id.md)
+- [Evaluation Report & Failure Analysis](docs/eval-report.md) · [🇮🇩 ID](docs/eval-report.id.md)
+- [ADR 001: Hybrid RRF Retrieval](docs/adr/001-hybrid-rrf-retrieval.md) · [🇮🇩 ID](docs/adr/001-hybrid-rrf-retrieval.id.md)
+- [ADR 002: Deterministic Grounding & Abstention](docs/adr/002-deterministic-grounding.md) · [🇮🇩 ID](docs/adr/002-deterministic-grounding.id.md)
+- [ADR 003: Canonical Identity Normalization](docs/adr/003-canonical-eval-identity.md) · [🇮🇩 ID](docs/adr/003-canonical-eval-identity.id.md)
 - [Indonesian Version / Versi Bahasa Indonesia](README.id.md)
 
 ---

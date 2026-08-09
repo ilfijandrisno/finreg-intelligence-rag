@@ -1,5 +1,7 @@
 # FinReg Intelligence RAG: Phase 8 Evaluation Report & Failure Analysis
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](eval-report.id.md)
+
 ## 1. Overview & Evaluation Methodology
 
 The Phase 8 evaluation framework measures multi-stage retrieval ranking quality and grounded answer generation fidelity for Bank Indonesia (BI) and OJK financial regulatory queries.

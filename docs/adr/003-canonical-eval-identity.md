@@ -1,5 +1,7 @@
 # ADR 003: Canonical Identity & Structural Suffix Normalization in Benchmarking
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](003-canonical-eval-identity.id.md)
+
 ## Status
 **Accepted**
 

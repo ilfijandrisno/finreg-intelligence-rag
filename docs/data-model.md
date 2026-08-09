@@ -1,5 +1,7 @@
 # FinReg Intelligence RAG: Database Schema & Canonical Provenance Model
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](data-model.id.md)
+
 ## 1. Relational Schema Overview (PostgreSQL + pgvector)
 
 The database schema is structured to preserve official regulatory metadata, document versioning, hierarchical legal tree nodes, and retrieval-ready chunks.

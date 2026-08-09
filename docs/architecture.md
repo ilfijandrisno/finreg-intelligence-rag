@@ -1,5 +1,7 @@
 # FinReg Intelligence RAG: System Architecture & Data Flow
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](architecture.id.md)
+
 ## 1. System Overview
 
 FinReg Intelligence RAG is a production-grade legal technology platform engineered for automated ingestion, hybrid indexing, reranking, and grounded question answering over Indonesian financial regulations issued by Bank Indonesia (BI) and the Financial Services Authority (OJK).

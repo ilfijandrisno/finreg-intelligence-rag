@@ -1,5 +1,7 @@
 # Phase 10: Containerization, Operational Engineering & Deployment Readiness
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](deployment-readiness.id.md)
+
 ## 1. Executive Summary
 
 Phase 10 establishes a production-oriented container architecture, GitHub Actions CI pipeline, Prometheus metrics observability, and environment configuration controls for the FinReg Intelligence RAG platform.

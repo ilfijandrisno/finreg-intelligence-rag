@@ -1,5 +1,7 @@
 # ADR 002: Deterministic Citation Validation & Explicit Abstention Safeguards
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](002-deterministic-grounding.id.md)
+
 ## Status
 **Accepted**
 

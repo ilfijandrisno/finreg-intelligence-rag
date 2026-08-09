@@ -1,5 +1,7 @@
 # FinReg Intelligence RAG: Developer Setup, Execution & Testing Guide
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](development.id.md)
+
 ## 1. Local Environment Prerequisites
 
 - **Python**: 3.11 or higher

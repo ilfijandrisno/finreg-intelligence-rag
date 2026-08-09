@@ -1,5 +1,7 @@
 # ADR 001: Hybrid Reciprocal Rank Fusion (RRF) Retrieval
 
+**Language:** 🇬🇧 English · [🇮🇩 Bahasa Indonesia](001-hybrid-rrf-retrieval.id.md)
+
 ## Status
 **Accepted**
 
