@@ -8,6 +8,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from finreg.database.models import (
+    ChunkEmbeddingORM,
     DocumentNodeORM,
     DocumentORM,
     DocumentVersionORM,
@@ -343,3 +344,85 @@ class IngestionRepository:
             document_version_id,
         )
         return created_chunks
+
+    def get_chunk_embeddings(
+        self, document_id: UUID, embedding_model: str
+    ) -> list[ChunkEmbeddingORM]:
+        """Fetch all ChunkEmbeddingORM instances for document_id and embedding_model."""
+        stmt = select(ChunkEmbeddingORM).where(
+            ChunkEmbeddingORM.document_id == document_id,
+            ChunkEmbeddingORM.embedding_model == embedding_model,
+        )
+        return list(self.session.scalars(stmt))
+
+    def replace_chunk_embeddings(
+        self,
+        document_id: UUID,
+        document_version_id: UUID,
+        embedding_model: str,
+        embeddings: list[dict],
+    ) -> list[ChunkEmbeddingORM]:
+        """Atomically delete existing embeddings for model and insert new ones."""
+        version = self.session.get(DocumentVersionORM, document_version_id)
+        if not version or version.document_id != document_id:
+            raise ValueError(
+                f"DocumentVersion {document_version_id} does not belong to Document {document_id}"
+            )
+
+        self.session.execute(
+            delete(ChunkEmbeddingORM).where(
+                ChunkEmbeddingORM.document_id == document_id,
+                ChunkEmbeddingORM.embedding_model == embedding_model,
+            )
+        )
+        self.session.flush()
+
+        created_embeddings: list[ChunkEmbeddingORM] = []
+        for item in embeddings:
+            orm_emb = ChunkEmbeddingORM(
+                document_id=document_id,
+                document_version_id=document_version_id,
+                chunk_id=item["chunk_id"],
+                embedding_model=embedding_model,
+                embedding=item["embedding"],
+            )
+            self.session.add(orm_emb)
+            created_embeddings.append(orm_emb)
+
+        self.session.flush()
+        logger.info(
+            "Replaced %d chunk embeddings for Document %s (Version: %s, Model: %s)",
+            len(created_embeddings),
+            document_id,
+            document_version_id,
+            embedding_model,
+        )
+        return created_embeddings
+
+    def vector_similarity_search(
+        self,
+        query_vector: list[float],
+        top_k: int = 5,
+        embedding_model: str = "text-embedding-3-small",
+        source_filter: str | None = None,
+        regulation_type_filter: str | None = None,
+        document_id_filter: UUID | None = None,
+    ) -> list[tuple[ChunkEmbeddingORM, RetrievalChunkORM, float]]:
+        """Perform pgvector cosine similarity search (<=>) returning top_k nearest embeddings."""
+        distance_col = ChunkEmbeddingORM.embedding.cosine_distance(query_vector).label("distance")
+        stmt = (
+            select(ChunkEmbeddingORM, RetrievalChunkORM, distance_col)
+            .join(RetrievalChunkORM, ChunkEmbeddingORM.chunk_id == RetrievalChunkORM.id)
+            .where(ChunkEmbeddingORM.embedding_model == embedding_model)
+        )
+
+        if source_filter:
+            stmt = stmt.where(RetrievalChunkORM.source == source_filter)
+        if regulation_type_filter:
+            stmt = stmt.where(RetrievalChunkORM.regulation_type == regulation_type_filter)
+        if document_id_filter:
+            stmt = stmt.where(ChunkEmbeddingORM.document_id == document_id_filter)
+
+        stmt = stmt.order_by(distance_col).limit(top_k)
+        results = self.session.execute(stmt).all()
+        return [(row[0], row[1], float(row[2])) for row in results]

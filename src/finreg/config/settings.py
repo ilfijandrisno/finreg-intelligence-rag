@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     )
     embedding_api_key: str | None = Field(default=None, description="Embedding API key")
     embedding_dimension: int = Field(default=1536, description="Target embedding dimension")
+
+    @field_validator("embedding_dimension")
+    @classmethod
+    def validate_embedding_dimension(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("embedding_dimension must be a positive integer > 0")
+        return v
 
     @property
     def database_url(self) -> str:

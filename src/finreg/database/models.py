@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -136,6 +137,17 @@ class DocumentVersionORM(Base):
     chunks: Mapped[list["RetrievalChunkORM"]] = relationship(
         "RetrievalChunkORM", back_populates="document_version", cascade="all, delete-orphan"
     )
+    embeddings: Mapped[list["ChunkEmbeddingORM"]] = relationship(
+        "ChunkEmbeddingORM",
+        primaryjoin=(
+            "and_("
+            "DocumentVersionORM.document_id == foreign(ChunkEmbeddingORM.document_id), "
+            "DocumentVersionORM.id == foreign(ChunkEmbeddingORM.document_version_id)"
+            ")"
+        ),
+        back_populates="document_version",
+        cascade="all, delete-orphan",
+    )
 
 
 class DocumentNodeORM(Base):
@@ -242,3 +254,81 @@ class RetrievalChunkORM(Base):
         "DocumentVersionORM", back_populates="chunks"
     )
     source_node: Mapped["DocumentNodeORM"] = relationship("DocumentNodeORM")
+    embeddings: Mapped[list["ChunkEmbeddingORM"]] = relationship(
+        "ChunkEmbeddingORM",
+        primaryjoin=(
+            "and_("
+            "RetrievalChunkORM.document_id == foreign(ChunkEmbeddingORM.document_id), "
+            "RetrievalChunkORM.document_version_id == "
+            "foreign(ChunkEmbeddingORM.document_version_id), "
+            "RetrievalChunkORM.id == foreign(ChunkEmbeddingORM.chunk_id)"
+            ")"
+        ),
+        back_populates="chunk",
+        cascade="all, delete-orphan",
+        overlaps="document_version,embeddings",
+    )
+
+
+class ChunkEmbeddingORM(Base):
+    """PostgreSQL ORM model for dense vector embeddings with pgvector Vector(1536)."""
+
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["document_id", "document_version_id", "chunk_id"],
+            [
+                "retrieval_chunks.document_id",
+                "retrieval_chunks.document_version_id",
+                "retrieval_chunks.id",
+            ],
+            ondelete="CASCADE",
+            name="fk_chunk_embeddings_retrieval_chunk",
+        ),
+        UniqueConstraint("chunk_id", "embedding_model", name="uq_chunk_embeddings_chunk_model"),
+        Index(
+            "idx_chunk_embeddings_doc_ver_model",
+            "document_id",
+            "document_version_id",
+            "embedding_model",
+        ),
+        Index(
+            "idx_chunk_embeddings_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(nullable=False)
+    chunk_id: Mapped[UUID] = mapped_column(nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(100), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    document_version: Mapped["DocumentVersionORM"] = relationship(
+        "DocumentVersionORM",
+        primaryjoin=(
+            "and_(DocumentVersionORM.document_id == foreign(ChunkEmbeddingORM.document_id), "
+            "DocumentVersionORM.id == foreign(ChunkEmbeddingORM.document_version_id))"
+        ),
+        back_populates="embeddings",
+    )
+    chunk: Mapped["RetrievalChunkORM"] = relationship(
+        "RetrievalChunkORM",
+        primaryjoin=(
+            "and_("
+            "RetrievalChunkORM.document_id == foreign(ChunkEmbeddingORM.document_id), "
+            "RetrievalChunkORM.document_version_id == "
+            "foreign(ChunkEmbeddingORM.document_version_id), "
+            "RetrievalChunkORM.id == foreign(ChunkEmbeddingORM.chunk_id)"
+            ")"
+        ),
+        back_populates="embeddings",
+        overlaps="document_version,embeddings",
+    )
